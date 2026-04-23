@@ -1,0 +1,31 @@
+# configs/peccavi.yaml
+# PECCAVI – Watermarking and Content Authenticity configuration
+
+model:
+  backbone: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+  load_in_4bit: false
+  device: "cpu"
+
+watermarking:
+  theta_init: 2.0              # initial watermark bias parameter
+  theta_min: 0.1
+  theta_max: 10.0
+  tournament_k: 8              # top-k candidates in tournament sampling
+  secret_key: "AIISC-SECRET"  # change in production
+  detection_threshold: 0.52   # score >= threshold → watermarked
+
+agents:
+  scriba_n_variants: 5         # number of adversarial paraphrases per text
+  praeco_prompt_pool: "default"
+
+policy_learning:
+  alpha: 0.05                  # REINFORCE learning rate
+  gamma: 0.99                  # discount factor
+  lambda_wm: 0.6               # weight for watermark score in reward
+  nu_quality: 0.4              # weight for text quality in reward
+  generations: 10              # training generations
+
+success_criteria:
+  watermark_retention_pct: 85  # must retain in 85% of paraphrased text
+  detection_auc_roc: 0.90
+  human_readability_min: 4.5   # out of 5
