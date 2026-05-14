@@ -65,7 +65,7 @@ def run_benchmarks(
                     model_name=model_id,
                     backend=backend,
                 )
-                pec_out = run_peccavi(model_backbone, generations=5, verbose=verbose)
+                pec_out = run_peccavi(model_backbone, generations=5, n_eval_samples=100, verbose=verbose)
                 report[model_name] = _peccavi_summary(pec_out)
             except Exception as e:
                 logger.error(f"Error running baseline {model_name}: {e}")
@@ -74,7 +74,7 @@ def run_benchmarks(
         # Single backbone mode
         if backbone is None:
             raise ValueError("Either backbone or baseline_config must be provided")
-        pec_out = run_peccavi(backbone, generations=5, verbose=verbose)
+        pec_out = run_peccavi(backbone, generations=5, n_eval_samples=100, verbose=verbose)
         report["peccavi"] = _peccavi_summary(pec_out)
 
     _print_summary(report)

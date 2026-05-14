@@ -81,7 +81,7 @@ class Magister:
         grad = 0.0
         for i, tid in enumerate(token_ids):
             r_t = _context_seed(token_ids[:i], self.secret_key)
-            g = _watermark_score(tid, r_t, self.backbone.tokenizer.vocab_size)
+            g = _watermark_score(tid, r_t)
             grad += g
         return grad
 

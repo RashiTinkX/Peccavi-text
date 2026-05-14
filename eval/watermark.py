@@ -29,6 +29,7 @@ def run_peccavi(
     backbone: LLaMABackbone,
     generations: int = 10,
     n_paraphrases: int = 5,
+    n_eval_samples: int = 100,
     verbose: bool = True,
 ) -> Dict:
     praeco = Praeco()
@@ -71,7 +72,7 @@ def run_peccavi(
     # AUC-ROC and False Positive Rate
     logger.info("Computing AUC-ROC and false positive rate")
 
-    eval_prompts = praeco.batch_prompts(20)
+    eval_prompts = praeco.batch_prompts(n_eval_samples)
 
     human_texts = [
         backbone.generate(p, max_new_tokens=100)['text']
@@ -82,7 +83,7 @@ def run_peccavi(
         for p in eval_prompts
     ]
 
-    labels = [0] * 20 + [1] * 20
+    labels = [0] * n_eval_samples + [1] * n_eval_samples
     scores = [custos.watermark_score(t) for t in human_texts + wm_texts_eval]
     auc = roc_auc_score(labels, scores)
 

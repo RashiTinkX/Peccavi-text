@@ -35,6 +35,7 @@ policy_learning:
   lambda_wm: 0.6               # weight for watermark score in reward
   nu_quality: 0.4              # weight for text quality in reward
   generations: 10              # training generations
+  n_eval_samples: 100          # human + watermarked samples each for AUC-ROC
 
 success_criteria:
   watermark_retention_pct: 85  # must retain in 85% of paraphrased text
