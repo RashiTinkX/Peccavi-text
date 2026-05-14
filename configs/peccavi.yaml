@@ -5,7 +5,7 @@ model:
   backbone: "meta-llama/Llama-2-7b-chat-hf"
   backend: "transformers"  # "transformers", "openai", or "anthropic"
   api_key: null             # Set via environment variable if using API-based backends
-  load_in_4bit: false
+  load_in_4bit: true
   device: "auto"
 
 
