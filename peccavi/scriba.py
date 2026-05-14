@@ -20,7 +20,7 @@ PARAPHRASE_PROMPTS = [
 
 
 from nltk.corpus import wordnet
-from transformers import MarianMTModel, MarianTokenizer, pipeline
+from transformers import MarianMTModel, MarianTokenizer
 import torch
 import random
 
@@ -43,15 +43,6 @@ class Scriba:
         except Exception:
             pass
         self.paraphrase_model = None
-        try:
-            self.paraphrase_model = pipeline(
-                "text2text-generation",
-                model="Vamsi/T5_Paraphrase_Paws",
-                device=-1,
-                max_length=256,
-            )
-        except Exception:
-            self.paraphrase_model = None
 
     def lexical_attack(self, text: str) -> str:
         words = text.split()
