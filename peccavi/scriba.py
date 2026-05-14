@@ -33,8 +33,8 @@ class Scriba:
         self.backbone = backbone
         self.n_variants = n_variants
         # Load translation pipeline for back-translation
-        self.translator_en_fr = pipeline("translation", model="Helsinki-NLP/opus-mt-en-fr")
-        self.translator_fr_en = pipeline("translation", model="Helsinki-NLP/opus-mt-fr-en")
+        self.translator_en_fr = pipeline("translation_en_to_fr", model="Helsinki-NLP/opus-mt-en-fr")
+        self.translator_fr_en = pipeline("translation_fr_to_en", model="Helsinki-NLP/opus-mt-fr-en")
         self.paraphrase_model = None
         try:
             self.paraphrase_model = pipeline(
