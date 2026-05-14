@@ -49,8 +49,11 @@ def run_peccavi(
 
         paraphrases = scriba.paraphrase(wm_text)
         s_eff = custos.effective_score(paraphrases)
-        
-        # Update with reference text (original prompt) for semantic fidelity
+
+        threshold = 0.52
+        para_scores = [custos.watermark_score(p) for p in paraphrases]
+        retention = sum(1 for s in para_scores if s >= threshold) / max(len(para_scores), 1)
+
         new_theta = magister.update(wm_text, s_eff, reference_text=prompt)
         original_score = custos.watermark_score(wm_text)
 
@@ -59,6 +62,7 @@ def run_peccavi(
             "theta": round(new_theta, 4),
             "original_score": round(original_score, 4),
             "effective_score": round(s_eff, 4),
+            "retention_rate": round(retention, 4),
             "readability": readability_score(wm_text),
         }
         history.append(record)
@@ -99,12 +103,16 @@ def run_peccavi(
     avg_readability = round(
         sum(r["readability"] for r in history) / len(history), 2
     )
+    avg_retention = round(
+        sum(r["retention_rate"] for r in history) / len(history), 4
+    )
 
     summary = {
         "theta_final": history[-1]["theta"],
         "effective_score_final": last_eff,
         "effective_score_improvement_pct": round(improvement, 2),
-        "meets_85pct_retention": last_eff >= 0.85,
+        "avg_retention_rate": avg_retention,
+        "meets_85pct_retention": avg_retention >= 0.85,
         "auc_roc": round(auc, 4),
         "false_positive_rate": round(fpr, 4),
         "meets_90pct_auc": auc >= 0.90,

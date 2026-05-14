@@ -65,7 +65,6 @@ class Magister:
     ):
         self.backbone = backbone
         self.theta = theta_init
-        self.backbone = backbone 
         self.alpha = alpha
         self.gamma = gamma
         self.lam = lam

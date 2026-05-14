@@ -96,8 +96,8 @@ class Auctor:
         for i, tid in enumerate(candidate_list):
             base_logit = top_k_logits[i].item()
             g_score = _watermark_score(tid, r_t)
-            # Additive watermark bias scaled by theta (but much smaller effective_theta)
-            effective_theta = min(self.theta * 0.05, 0.1)
+            # Additive watermark bias scaled by theta 
+            effective_theta = min(self.theta * 0.3, 1.0)  # Cap theta influence to prevent extreme bias
             watermark_boost = effective_theta * (2.0 * g_score - 1.0)  # Scale [-1, 1]
             biased_logit = base_logit + watermark_boost
             biased_scores.append((tid, biased_logit, g_score))
@@ -122,6 +122,11 @@ class Auctor:
 
         Returns: coherent watermarked text
         """
+        # API backends have no tokenizer — return plain generation without watermarking
+        if not hasattr(self.backbone, "tokenizer"):
+            raw = self.backbone.generate(prompt, max_new_tokens=max_tokens)
+            return raw["text"] if isinstance(raw, dict) else raw
+
         tokenizer = self.backbone.tokenizer
 
         # backbone.generate() returns {"text": "..."} and expects max_new_tokens

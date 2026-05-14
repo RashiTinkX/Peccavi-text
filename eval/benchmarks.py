@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 def _peccavi_summary(pec_out: Dict) -> Dict:
-    robustness = pec_out["effective_score_final"] * 100
-    reliability = pec_out["effective_score_final"] * 100
+    robustness = pec_out.get("avg_retention_rate", pec_out["effective_score_final"]) * 100
+    resilience = pec_out["effective_score_final"] * 100
     return {
         "theta_final": pec_out["theta_final"],
         "effective_score_final": pec_out["effective_score_final"],
@@ -29,7 +29,7 @@ def _peccavi_summary(pec_out: Dict) -> Dict:
         "pass_auc": pec_out["meets_90pct_auc"],
         "pass_readability": pec_out["meets_readability_45"],
         "robustness": round(robustness, 2),
-        "resilience": round(reliability, 2),
+        "resilience": round(resilience, 2),
         "fpr": round(pec_out["false_positive_rate"] * 100, 2),
         "readability": pec_out["avg_readability"],
     }

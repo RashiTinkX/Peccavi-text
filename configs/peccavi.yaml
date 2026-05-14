@@ -43,9 +43,9 @@ success_criteria:
   human_readability_min: 4.5   # out of 5
 
 
-#  - name: "GPT-4"
-#    backbone: "gpt-4"
-#    backend: "openai"
-#  - name: "Claude-3"
-#    backbone: "claude-3-sonnet-20240229"
-#    backend: "anthropic"
+  - name: "GPT-4"
+    backbone: "gpt-4o"
+    backend: "openai"
+  - name: "Claude-3"
+    backbone: "claude-sonnet-4-6"
+    backend: "anthropic"

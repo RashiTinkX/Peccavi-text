@@ -12,6 +12,7 @@ from peccavi.auctor import _watermark_score, _context_seed
 from backbone.model import LLaMABackbone
 from typing import List
 import statistics
+import hashlib
 from peccavi.constants import SECRET_KEY
 
 
@@ -39,13 +40,13 @@ class Custos:
         for i, tid in enumerate(token_ids):
             # Convert string tokens to int if needed
             if isinstance(tid, str):
-                tid_hash = hash(tid) % 100000
+                tid_hash = int(hashlib.sha256(tid.encode()).hexdigest()[:8], 16) % 100000
             else:
                 tid_hash = tid
-                
-            # Build context for seed
+
             if isinstance(token_ids[0], str):
-                context_ids = [hash(t) % 100000 for t in token_ids[:i]]
+                context_ids = [int(hashlib.sha256(t.encode()).hexdigest()[:8], 16) % 100000
+                               for t in token_ids[:i]]
             else:
                 context_ids = token_ids[:i]
                 

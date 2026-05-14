@@ -52,14 +52,17 @@ class LLaMABackbone:
         load_in_4bit: bool = True,
         api_key: Optional[str] = None,
     ):
-        self._initialized = False
-        if self._initialized:
-            return
-
         self.model_name = model_name
         self.backend = backend
         self.device = device
-        self.api_key = api_key or os.getenv("API_KEY")  # Set env var for API key
+        if api_key:
+            self.api_key = api_key
+        elif backend == "openai":
+            self.api_key = os.getenv("OPENAI_API_KEY")
+        elif backend == "anthropic":
+            self.api_key = os.getenv("ANTHROPIC_API_KEY")
+        else:
+            self.api_key = os.getenv("API_KEY")
 
         if backend == "transformers":
             # Existing local model loading logic

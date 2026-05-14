@@ -39,7 +39,7 @@ def get_baseline_metrics() -> dict:
             "robustness": float(entry.get("robustness", 0.0)),
             "resilience": float(entry.get("resilience", 0.0)),
             "fpr": float(entry.get("fpr", 0.0)),
-            "auc": float(entry.get("auc", 0.0)),
+            "auc": float(entry.get("auc_roc", entry.get("auc", 0.0))),
             "readability": float(entry.get("readability", 0.0)),
         }
     return baseline_metrics
