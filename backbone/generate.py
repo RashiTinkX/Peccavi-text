@@ -6,7 +6,7 @@ Higher-level generation helpers shared by all subsystems.
 from __future__ import annotations
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from backbone.model import LLaMABackbone
+    from backbone.model import LLaMABackbone #replace with eventually LLaMA 2 Mistral GPT-4 
 from typing import List
 import torch
 

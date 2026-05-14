@@ -21,5 +21,5 @@ def get_8bit_config() -> BitsAndBytesConfig:
 
 
 def get_fp16_config() -> dict:
-    """No quantization – pure fp16 for high-VRAM setups."""
+    """No quantization  pure fp16 for high-VRAM setups."""
     return {"torch_dtype": torch.float16}

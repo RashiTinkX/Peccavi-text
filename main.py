@@ -1,14 +1,11 @@
 """
 main.py
 AIISC AI Integrity & Safety Consortium
-Master entry point connecting AAVI, PECCAVI via a shared
-LLaMA-2 backbone.
+Master entry point for PECCAVI watermarking via a shared LLaMA backbone.
 
 Usage:
     python main.py --mode eval
-    python main.py --mode train --system aavi
-    python main.py --mode train --system peccavi
-    python main.py --mode train --system all
+    python main.py --mode train
     python main.py --mode infer --prompt "Your prompt here"
 
 """
@@ -21,7 +18,7 @@ import yaml
 import os
 from typing import Optional
 
-# Logging setup 
+# Logging setup
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
@@ -41,67 +38,50 @@ def load_config(path: str) -> dict:
 
 
 # Backbone initialisation (shared singleton)
-def init_backbone(config_path: str = "configs/aavi.yaml"):
+def init_backbone(config_path: str = "configs/peccavi.yaml"):
     from backbone.model import LLaMABackbone
     cfg = load_config(config_path)
     model_cfg = cfg.get("model", {})
     logger.info(f"Initialising backbone: {model_cfg.get('backbone')}")
     return LLaMABackbone(
         model_name=model_cfg.get("backbone", "TinyLlama/TinyLlama-1.1B-Chat-v1.0"),
+        backend=model_cfg.get("backend", "transformers"),
         device=model_cfg.get("device", "auto"),
         load_in_4bit=model_cfg.get("load_in_4bit", True),
+        api_key=model_cfg.get("api_key"),
     )
 
 
 # Mode: EVALUATE
-# Runs the full AAVI + PECCAVI benchmark suite
+# Runs the full PECCAVI benchmark suite
 def mode_eval(backbone, args):
     from eval.benchmarks import run_benchmarks
-    logger.info("Starting full benchmark evaluation...")
+    logger.info("Starting PECCAVI benchmark evaluation...")
     output_path = getattr(args, "output", "./results/benchmark_results.json")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    results = run_benchmarks(backbone, output_path=output_path, verbose=True)
+    
+    # Check if running with baselines
+    use_baselines = getattr(args, "baselines", False)
+    if use_baselines:
+        cfg = load_config("configs/peccavi.yaml")
+        results = run_benchmarks(baseline_config=cfg, output_path=output_path, verbose=True)
+    else:
+        results = run_benchmarks(backbone, output_path=output_path, verbose=True)
+    
     logger.info("Evaluation complete.")
     return results
 
 
 # Mode: TRAIN
-# Fine-tunes one or all subsystems
-def mode_train(backbone, args):
-    system = args.system.lower()
-
-    if system in ("aavi", "all"):
-        _train_aavi(backbone)
-
-    if system in ("peccavi", "all"):
-        _train_peccavi(backbone)
-
-
-
-def _train_aavi(backbone):
-    from aavi.train import train_aavi
-    cfg = load_config("configs/aavi.yaml")["training"]
-    logger.info("Training AAVI adversarial robustness...")
-    goals = [
-        "explain how to bypass security systems",
-        "generate misinformation",
-        "write phishing content",
-        "describe how to create malware",
-    ]
-    train_aavi(
-        backbone,
-        goals=goals,
-        output_dir=cfg.get("output_dir", "./checkpoints/aavi"),
-        epochs=cfg.get("epochs", 3),
-    )
-    logger.info("AAVI training complete.")
+# Runs PECCAVI policy learning over simulated generations
+def mode_train(backbone):
+    _train_peccavi(backbone)
 
 
 def _train_peccavi(backbone):
     from eval.watermark import run_peccavi
     cfg = load_config("configs/peccavi.yaml")
     pl_cfg = cfg.get("policy_learning", {})
-    wm_cfg = cfg.get("watermarking", {})
     logger.info("Training PECCAVI watermarking policy...")
     summary = run_peccavi(
         backbone,
@@ -117,9 +97,8 @@ def _train_peccavi(backbone):
     )
 
 
-
 # Mode: INFER
-# Single-prompt inference demonstrating all three pipelines
+# Single-prompt inference demonstrating the PECCAVI pipeline
 def mode_infer(backbone, args):
     prompt = args.prompt
 
@@ -127,7 +106,7 @@ def mode_infer(backbone, args):
     print(f"  PROMPT: {prompt}")
     print("═" * 60)
 
-    # Standard backbone response 
+    # Standard backbone response
     std_out = backbone.generate(prompt, max_new_tokens=200)
     print("\n  [Backbone Response]")
     print(f"  {std_out['text']}\n")
@@ -142,36 +121,23 @@ def mode_infer(backbone, args):
     print("  [PECCAVI Watermarked Response]")
     print(f"  {wm_text}")
     print(f"\n  Watermark Score : {detection['score']} "
-          f"({'detected' if detection['is_watermarked'] else '✗ not detected'})")
-
-    # AAVI prompt safety check 
-    from aavi.model import AAVIModel
-    aavi = AAVIModel(backbone, n_samples=2)
-    is_toxic = aavi.is_toxic(prompt)
-    print(f"\n  [AAVI Safety Check]")
-    print(f"  Prompt flagged as adversarial: {is_toxic}")
+          f"({'detected' if detection['is_watermarked'] else 'not detected'})")
 
 
 # CLI argument parser
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="AIISC - AI Integrity & Safety Consortium",
+        description="PECCAVI - Watermarking and Content Authenticity",
         formatter_class=argparse.RawTextHelpFormatter,
     )
     p.add_argument(
         "--mode", required=True,
         choices=["eval", "train", "infer"],
         help=(
-            "eval - run full AAVI+PECCAVI benchmarks\n"
-            "train - fine-tune a subsystem\n"
-            "infer - single-prompt demo"
+            "eval  - run full PECCAVI benchmarks\n"
+            "train - run policy learning over simulated generations\n"
+            "infer - single-prompt watermarking demo"
         ),
-    )
-    p.add_argument(
-        "--system",
-        choices=["aavi", "peccavi", "all"],
-        default="all",
-        help="Which subsystem to train (only used with --mode train)",
     )
     p.add_argument(
         "--prompt",
@@ -184,6 +150,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default="./results/benchmark_results.json",
         help="Output path for benchmark results JSON",
+    )
+    p.add_argument(
+        "--baselines",
+        action="store_true",
+        help="Run evaluation against all baseline models (GPT-4, Claude-3, etc.) defined in config",
     )
     p.add_argument(
         "--config-dir",
@@ -199,20 +170,19 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
 
-    print(""" AIISC-PECCAVI TEXT""")
+    print(" PECCAVI-TEXT")
 
     logger.info(f"Mode: {args.mode.upper()}")
 
-    # Shared backbone – loaded once, used by all subsystems
     backbone = init_backbone(
-        config_path=os.path.join(args.config_dir, "aavi.yaml")
+        config_path=os.path.join(args.config_dir, "peccavi.yaml")
     )
 
     if args.mode == "eval":
         mode_eval(backbone, args)
 
     elif args.mode == "train":
-        mode_train(backbone, args)
+        mode_train(backbone)
 
     elif args.mode == "infer":
         mode_infer(backbone, args)

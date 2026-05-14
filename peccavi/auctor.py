@@ -1,6 +1,6 @@
 """
 peccavi/auctor.py
-Agent: Auctor – Watermarked Token Generation via Tournament Sampling.
+Agent: Auctor - Watermarked Token Generation via Tournament Sampling.
 Implements the modified distribution:
     p_w(x_t | x_<t, θ) ∝ p_LM(x_t | x_<t) * exp(θ * g(x_t, r_t))
 """
@@ -8,9 +8,10 @@ Implements the modified distribution:
 from __future__ import annotations
 import torch
 import hashlib
-from backbone.model import LLaMABackbone
+from backbone.model import LLaMABackbone #replace with eventually LLaMA 2 Mistral GPT-4 
 from backbone.generate import speculative_candidates
 from typing import List
+from peccavi.constants import SECRET_KEY
 
 
 def _watermark_score(token_id: int, random_seed: int, vocab_size: int) -> float:
@@ -22,7 +23,7 @@ def _watermark_score(token_id: int, random_seed: int, vocab_size: int) -> float:
     return int(h[:8], 16) / 0xFFFFFFFF  # normalise to [0,1]
 
 
-def _context_seed(context_ids: List[int], secret_key: str = "AIISC-KEY") -> int:
+def _context_seed(context_ids: List[int], secret_key: str = SECRET_KEY) -> int:
     """Derive a random seed from rolling context window."""
     key_str = secret_key + "".join(str(x) for x in context_ids[-5:])
     return int(hashlib.sha256(key_str.encode()).hexdigest()[:8], 16)
@@ -35,7 +36,7 @@ class Auctor:
     """
 
     def __init__(self, backbone: LLaMABackbone, theta: float = 2.0,
-                 tournament_k: int = 8, secret_key: str = "AIISC-KEY"):
+                 tournament_k: int = 8, secret_key: str = SECRET_KEY):
         self.backbone = backbone
         self.theta = theta
         self.tournament_k = tournament_k
