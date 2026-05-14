@@ -151,7 +151,8 @@ class Auctor:
             context_text = tokenizer.decode(context_ids_prefix, skip_special_tokens=True)
 
             try:
-                new_token, _ = self._tournament_sample(context_text, context_ids_prefix)
+                # seed_ids uses only generated tokens to match Custos detection context
+                new_token, _ = self._tournament_sample(context_text, refined_ids[:i])
                 refined_ids[i] = new_token
             except Exception:
                 pass
