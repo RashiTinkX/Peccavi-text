@@ -44,7 +44,7 @@ def init_backbone(config_path: str = "configs/peccavi.yaml"):
     model_cfg = cfg.get("model", {})
     logger.info(f"Initialising backbone: {model_cfg.get('backbone')}")
     return LLaMABackbone(
-        model_name=model_cfg.get("backbone", "TinyLlama/TinyLlama-1.1B-Chat-v1.0"),
+        model_name=model_cfg.get("backbone", "meta-llama/Llama-2-7b-chat-hf"),
         backend=model_cfg.get("backend", "transformers"),
         device=model_cfg.get("device", "auto"),
         load_in_4bit=model_cfg.get("load_in_4bit", True),

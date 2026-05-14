@@ -2,11 +2,12 @@
 # PECCAVI – Watermarking and Content Authenticity configuration
 
 model:
-  backbone: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+  backbone: "meta-llama/Llama-2-7b-chat-hf"
   backend: "transformers"  # "transformers", "openai", or "anthropic"
   api_key: null             # Set via environment variable if using API-based backends
   load_in_4bit: false
   device: "cpu"
+
 
 baseline_models:
   - name: "LLaMa-2"
@@ -15,12 +16,6 @@ baseline_models:
   - name: "DeepSeek"
     backbone: "deepseek-ai/deepseek-7b-chat"
     backend: "transformers"
-  - name: "GPT-4"
-    backbone: "gpt-4"
-    backend: "openai"
-  - name: "Claude-3"
-    backbone: "claude-3-sonnet-20240229"
-    backend: "anthropic"
 
 watermarking:
   theta_init: 2.0              # initial watermark bias parameter
@@ -45,3 +40,11 @@ success_criteria:
   watermark_retention_pct: 85  # must retain in 85% of paraphrased text
   detection_auc_roc: 0.90
   human_readability_min: 4.5   # out of 5
+
+
+#  - name: "GPT-4"
+#    backbone: "gpt-4"
+#    backend: "openai"
+#  - name: "Claude-3"
+#    backbone: "claude-3-sonnet-20240229"
+#    backend: "anthropic"

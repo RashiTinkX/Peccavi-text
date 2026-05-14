@@ -1,7 +1,10 @@
 """
 peccavi/custos.py
 Agent: Custos – Watermark Detection.
-Computes S(x_1:T) and effective score S_eff across paraphrased variants.
+Detects watermarks by computing average watermark score across tokens:
+    S(x_1:T) = (1/T) * Σ_t g(x_t, r_t)
+And effective score across paraphrases:
+    S_eff(x_1:T) = min_i S(x̃^(i)_1:T)
 """
 
 from __future__ import annotations
@@ -19,48 +22,53 @@ class Custos:
 
     def watermark_score(self, text: str) -> float:
         """
-        S(x_1:T) = mean_t g(x_t, r_t)
+        S(x_1:T) = (1/T) * Σ_t g(x_t, r_t)
+        Average watermark score across all tokens in the text.
         """
-        # Handle tokenizer for different backends
         if hasattr(self.backbone, 'tokenizer'):
             tokenizer = self.backbone.tokenizer
             token_ids = tokenizer.encode(text)
-            vocab_size = tokenizer.vocab_size
         else:
-            # Fallback for API backends: use word-level tokenization
+            # Fallback for API backends
             token_ids = text.split()
-            vocab_size = 100000
         
         if not token_ids:
             return 0.0
 
         scores = []
         for i, tid in enumerate(token_ids):
-            # Convert string tokens to hashes for API backends
+            # Convert string tokens to int if needed
             if isinstance(tid, str):
                 tid_hash = hash(tid) % 100000
             else:
                 tid_hash = tid
                 
-            # Convert token list for seed if using word-based tokens
+            # Build context for seed
             if isinstance(token_ids[0], str):
                 context_ids = [hash(t) % 100000 for t in token_ids[:i]]
             else:
                 context_ids = token_ids[:i]
                 
             r_t = _context_seed(context_ids, self.secret_key)
-            scores.append(_watermark_score(tid_hash, r_t, vocab_size))
-        return statistics.mean(scores)
+            g_score = _watermark_score(tid_hash, r_t)
+            scores.append(g_score)
+        
+        # Return average watermark score
+        return statistics.mean(scores) if scores else 0.0
 
     def effective_score(self, paraphrases: List[str]) -> float:
         """
-        S_eff = min_i S(x̃^(i)_1:T)  – worst-case across all paraphrases.
+        S_eff(x_1:T) = min_i S(x̃^(i)_1:T)
+        Worst-case (minimum) watermark score across all paraphrased variants.
         """
         if not paraphrases:
             return 0.0
         return min(self.watermark_score(p) for p in paraphrases)
 
     def detect(self, text: str, threshold: float = 0.52) -> dict:
+        """
+        Detect watermark: score >= threshold indicates watermarked text.
+        """
         score = self.watermark_score(text)
         return {
             "score": round(score, 4),

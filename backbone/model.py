@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 class LLaMABackbone:
     def __init__(
         self,
-        model_name: str = "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        model_name: str = "meta-llama/Llama-2-7b-chat-hf",
         backend: str = "transformers",  # "transformers", "openai", or "anthropic"
         device: str = "auto",
         load_in_4bit: bool = True,
@@ -65,6 +65,7 @@ class LLaMABackbone:
             # Existing local model loading logic
             print(f"[AIISC] Loading tokenizer: {model_name}", flush=True)
             self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+
             self.tokenizer.pad_token = self.tokenizer.eos_token
             self.vocab_size = self.tokenizer.vocab_size
 
@@ -79,10 +80,11 @@ class LLaMABackbone:
                 )
             else:
                 print("[AIISC] bitsandbytes unavailable — using fp16", flush=True)
-                load_kwargs["torch_dtype"] = torch.float32
+                load_kwargs["dtype"] = torch.float16
 
             print("[AIISC] Loading model weights...", flush=True)
             self.model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
+
             self.model.eval()
             print("[AIISC] Backbone ready!", flush=True)
 
@@ -119,6 +121,11 @@ class LLaMABackbone:
     @torch.no_grad()
     def _generate_transformers(self, prompt, max_new_tokens, temperature, top_p, do_sample, return_logits):
         """Generate text using local transformers model."""
+        # Handle chat models
+        if hasattr(self.tokenizer, 'chat_template') and self.tokenizer.chat_template is not None:
+            messages = [{"role": "user", "content": prompt}]
+            prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        
         inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
         outputs = self.model.generate(
             **inputs, max_new_tokens=max_new_tokens, temperature=temperature,
@@ -131,6 +138,24 @@ class LLaMABackbone:
         if return_logits and hasattr(outputs, "scores"):
             result["scores"] = outputs.scores
         return result
+
+    @torch.no_grad()
+    def token_distribution(self, context: str):
+        """Get the token distribution for the next token given the context."""
+        if self.backend != "transformers":
+            raise NotImplementedError(f"token_distribution not supported for backend: {self.backend}")
+        
+        # Handle chat models
+        if hasattr(self.tokenizer, 'chat_template') and self.tokenizer.chat_template is not None:
+            messages = [{"role": "user", "content": context}]
+            context = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        
+        inputs = self.tokenizer(context, return_tensors="pt").to(self.model.device)
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+            logits = outputs.logits[:, -1, :]  # Last token logits
+            probs = torch.softmax(logits, dim=-1)
+        return probs.squeeze(0).cpu()  # Return as 1D tensor on CPU
 
     def _generate_openai(self, prompt, max_new_tokens, temperature, top_p):
         """Generate text using OpenAI API."""

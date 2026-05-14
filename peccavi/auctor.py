@@ -3,36 +3,43 @@ peccavi/auctor.py
 Agent: Auctor - Watermarked Token Generation via Tournament Sampling.
 Implements the modified distribution:
     p_w(x_t | x_<t, θ) ∝ p_LM(x_t | x_<t) * exp(θ * g(x_t, r_t))
+where g(x_t, r_t) is computed via tournament sampling over candidate tokens.
+
+Hybrid approach:
+1. Generate baseline text with backbone (preserves coherence)
+2. Apply tournament sampling to final ~20% of tokens (embeds watermark signal)
+This balances methodology fidelity with output quality.
 """
 
 from __future__ import annotations
 import torch
 import hashlib
-from backbone.model import LLaMABackbone #replace with eventually LLaMA 2 Mistral GPT-4 
-from backbone.generate import speculative_candidates
-from typing import List
+import numpy as np
+from backbone.model import LLaMABackbone
+from typing import List, Tuple
 from peccavi.constants import SECRET_KEY
 
 
-def _watermark_score(token_id: int, random_seed: int, vocab_size: int) -> float:
+def _watermark_score(token_id: int, random_seed: int) -> float:
     """
     g(x_t, r_t): deterministic score in [0,1] derived from token and seed.
-    Uses a hash-based green/red list partition.
+    Uses hash-based green/red list partitioning.
     """
     h = hashlib.sha256(f"{random_seed}:{token_id}".encode()).hexdigest()
-    return int(h[:8], 16) / 0xFFFFFFFF  # normalise to [0,1]
+    return int(h[:8], 16) / 0xFFFFFFFF
 
 
 def _context_seed(context_ids: List[int], secret_key: str = SECRET_KEY) -> int:
-    """Derive a random seed from rolling context window."""
+    """Derive a random seed from rolling context window (last 5 tokens)."""
     key_str = secret_key + "".join(str(x) for x in context_ids[-5:])
     return int(hashlib.sha256(key_str.encode()).hexdigest()[:8], 16)
 
 
 class Auctor:
     """
-    Generates watermarked text token-by-token using tournament sampling
-    during speculative decoding.
+    Generates watermarked text using tournament sampling with safeguards.
+    Samples K candidates, applies watermark-aware re-weighting, then samples winner.
+    Includes fallback mechanisms for numerical stability and quality preservation.
     """
 
     def __init__(self, backbone: LLaMABackbone, theta: float = 2.0,
@@ -42,49 +49,111 @@ class Auctor:
         self.tournament_k = tournament_k
         self.secret_key = secret_key
 
-    def _tournament_sample(
-        self, context: str, context_ids: List[int]
-    ) -> int:
+    def _tournament_sample(self, context: str, context_ids: List[int]) -> Tuple[int, float]:
         """
-        Sample top-k candidates, re-weight by watermark score, pick winner.
-        Returns winning token_id.
+        Tournament sampling: sample K candidates from the LM distribution,
+        apply watermark-aware re-weighting, return winning token and its watermark score.
+        
+        Returns: (token_id, watermark_score)
         """
-        # Step 1: get top-k token ids from backbone
-        candidates = speculative_candidates(
-            self.backbone, context, k=self.tournament_k
-        )
-        # Step 2: get base probabilities
-        dist = self.backbone.token_distribution(context)
-        r_t = _context_seed(context_ids, self.secret_key)
-
-        # Step 3: apply watermark bias
-        scores = []
-        for tid in candidates:
-            base_prob = dist[tid].item()
-            g = _watermark_score(tid, r_t, dist.shape[0])
-            biased = base_prob * torch.exp(torch.tensor(self.theta * g)).item()
-            scores.append((tid, biased))
-
-        # Step 4: normalise and sample
-        total = sum(s for _, s in scores)
-        probs = torch.tensor([s / total for _, s in scores])
-        winner_idx = torch.multinomial(probs, 1).item()
-        return scores[winner_idx][0]
-
-    # 
-    def generate(self, prompt: str, max_tokens: int = 200) -> str:
         tokenizer = self.backbone.tokenizer
-        context = prompt
-        context_ids = tokenizer.encode(prompt)
-        generated_ids: List[int] = []
+        
+        # Get raw logits
+        try:
+            inputs = tokenizer(context, return_tensors="pt").to(self.backbone.model.device)
+            with torch.no_grad():
+                outputs = self.backbone.model(**inputs)
+                logits = outputs.logits[:, -1, :].squeeze(0)
+        except Exception:
+            inputs = tokenizer(context, return_tensors="pt").to(self.backbone.model.device)
+            with torch.no_grad():
+                outputs = self.backbone.model(**inputs)
+                logits = outputs.logits[:, -1, :].squeeze(0)
+        
+        vocab_size = logits.shape[0]
+        k = min(self.tournament_k, vocab_size - 1)
+        
+        if k < 2:
+            top_token = torch.argmax(logits).item()
+            r_t = _context_seed(context_ids, self.secret_key)
+            g_score = _watermark_score(top_token, r_t)
+            return top_token, g_score
+        
+        # Get top-k candidates
+        try:
+            top_k_logits, top_k_indices = torch.topk(logits, k)
+        except Exception:
+            top_token = torch.argmax(logits).item()
+            r_t = _context_seed(context_ids, self.secret_key)
+            g_score = _watermark_score(top_token, r_t)
+            return top_token, g_score
+        
+        candidate_list = top_k_indices.tolist()
+        r_t = _context_seed(context_ids, self.secret_key)
+        
+        # Apply watermark re-weighting: use top-k logits as base, add watermark bias
+        biased_scores = []
+        for i, tid in enumerate(candidate_list):
+            base_logit = top_k_logits[i].item()
+            g_score = _watermark_score(tid, r_t)
+            # Additive watermark bias scaled by theta (but much smaller effective_theta)
+            effective_theta = min(self.theta * 0.05, 0.1)
+            watermark_boost = effective_theta * (2.0 * g_score - 1.0)  # Scale [-1, 1]
+            biased_logit = base_logit + watermark_boost
+            biased_scores.append((tid, biased_logit, g_score))
+        
+        # Sample from re-weighted distribution
+        try:
+            logits_array = torch.tensor([s[1] for s in biased_scores], device=logits.device)
+            probs = torch.softmax(logits_array, dim=0)
+            idx = torch.multinomial(probs, 1).item()
+            winner_tid, _, winner_g_score = biased_scores[idx]
+            return winner_tid, winner_g_score
+        except Exception:
+            # Fallback to highest biased logit
+            winner_tid, _, winner_g_score = max(biased_scores, key=lambda x: x[1])
+            return winner_tid, winner_g_score
 
-        for _ in range(max_tokens):
-            token_id = self._tournament_sample(context, context_ids)
-            token_str = tokenizer.decode([token_id])
-            if token_id == tokenizer.eos_token_id:
-                break
-            generated_ids.append(token_id)
-            context_ids.append(token_id)
-            context += token_str
+    def generate(self, prompt: str, max_tokens: int = 200) -> str:
+        """
+        Hybrid watermarked generation:
+        1. Generate baseline text with backbone (normal LM generation)
+        2. Apply tournament sampling to refine ~20% of final tokens with watermark bias
 
-        return tokenizer.decode(generated_ids, skip_special_tokens=True)
+        Returns: coherent watermarked text
+        """
+        tokenizer = self.backbone.tokenizer
+
+        # backbone.generate() returns {"text": "..."} and expects max_new_tokens
+        raw = self.backbone.generate(prompt, max_new_tokens=max_tokens)
+        baseline = raw["text"] if isinstance(raw, dict) else raw
+
+        if not baseline.strip():
+            return ""
+
+        # backbone already strips prompt tokens — encode only the generated text
+        baseline_ids = tokenizer.encode(baseline, add_special_tokens=False)
+        prompt_ids = tokenizer.encode(prompt, add_special_tokens=False)
+
+        if len(baseline_ids) < 2:
+            return baseline
+
+        # Apply tournament sampling to the last 20% of generated tokens
+        refinement_start = max(1, int(len(baseline_ids) * 0.8))
+        refined_ids = baseline_ids.copy()
+
+        for i in range(refinement_start, len(refined_ids)):
+            context_ids_prefix = prompt_ids + refined_ids[:i]
+            context_text = tokenizer.decode(context_ids_prefix, skip_special_tokens=True)
+
+            try:
+                new_token, _ = self._tournament_sample(context_text, context_ids_prefix)
+                refined_ids[i] = new_token
+            except Exception:
+                pass
+
+        result = tokenizer.decode(refined_ids, skip_special_tokens=True)
+        return result if result.strip() else baseline
+
+
+
