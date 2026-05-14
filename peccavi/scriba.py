@@ -20,7 +20,8 @@ PARAPHRASE_PROMPTS = [
 
 
 from nltk.corpus import wordnet
-from transformers import pipeline
+from transformers import MarianMTModel, MarianTokenizer, pipeline
+import torch
 import random
 
 # Download NLTK data if needed
@@ -32,9 +33,15 @@ class Scriba:
     def __init__(self, backbone: LLaMABackbone, n_variants: int = 5):
         self.backbone = backbone
         self.n_variants = n_variants
-        # Load translation pipeline for back-translation
-        self.translator_en_fr = pipeline("translation_en_to_fr", model="Helsinki-NLP/opus-mt-en-fr")
-        self.translator_fr_en = pipeline("translation_fr_to_en", model="Helsinki-NLP/opus-mt-fr-en")
+        self._translation_available = False
+        try:
+            self._tok_en_fr = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-en-fr")
+            self._mdl_en_fr = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-en-fr")
+            self._tok_fr_en = MarianTokenizer.from_pretrained("Helsinki-NLP/opus-mt-fr-en")
+            self._mdl_fr_en = MarianMTModel.from_pretrained("Helsinki-NLP/opus-mt-fr-en")
+            self._translation_available = True
+        except Exception:
+            pass
         self.paraphrase_model = None
         try:
             self.paraphrase_model = pipeline(
@@ -59,10 +66,17 @@ class Scriba:
         return ' '.join(new_words)
 
     def syntactic_attack(self, text: str) -> str:
+        if not self._translation_available:
+            return self.lm_paraphrase(text, random.choice(PARAPHRASE_PROMPTS))
         try:
-            fr_text = self.translator_en_fr(text)[0]['translation_text']
-            en_text = self.translator_fr_en(fr_text)[0]['translation_text']
-            return en_text
+            inputs = self._tok_en_fr(text, return_tensors="pt", truncation=True, max_length=512)
+            with torch.no_grad():
+                fr_ids = self._mdl_en_fr.generate(**inputs)
+            fr_text = self._tok_en_fr.decode(fr_ids[0], skip_special_tokens=True)
+            inputs2 = self._tok_fr_en(fr_text, return_tensors="pt", truncation=True, max_length=512)
+            with torch.no_grad():
+                en_ids = self._mdl_fr_en.generate(**inputs2)
+            return self._tok_fr_en.decode(en_ids[0], skip_special_tokens=True)
         except Exception:
             return text
 
