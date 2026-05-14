@@ -86,7 +86,7 @@ def _train_peccavi(backbone):
     summary = run_peccavi(
         backbone,
         generations=pl_cfg.get("generations", 10),
-        n_paraphrases=cfg["agents"].get("scriba_n_variants", 5),
+        n_paraphrases=cfg.get("agents", {}).get("scriba_n_variants", 5),
         n_eval_samples=pl_cfg.get("n_eval_samples", 100),
         verbose=True,
     )
