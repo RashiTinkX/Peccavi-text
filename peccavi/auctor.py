@@ -96,8 +96,7 @@ class Auctor:
         for i, tid in enumerate(candidate_list):
             base_logit = top_k_logits[i].item()
             g_score = _watermark_score(tid, r_t)
-            # Additive watermark bias scaled by theta 
-            effective_theta = min(self.theta * 0.3, 1.0)  # Cap theta influence to prevent extreme bias
+            effective_theta = min(self.theta, 5.0)
             watermark_boost = effective_theta * (2.0 * g_score - 1.0)  # Scale [-1, 1]
             biased_logit = base_logit + watermark_boost
             biased_scores.append((tid, biased_logit, g_score))
@@ -143,8 +142,8 @@ class Auctor:
         if len(baseline_ids) < 2:
             return baseline
 
-        # Apply tournament sampling to the last 20% of generated tokens
-        refinement_start = max(1, int(len(baseline_ids) * 0.8))
+        # Apply tournament sampling to the last 50% of generated tokens
+        refinement_start = max(1, int(len(baseline_ids) * 0.5))
         refined_ids = baseline_ids.copy()
 
         for i in range(refinement_start, len(refined_ids)):
