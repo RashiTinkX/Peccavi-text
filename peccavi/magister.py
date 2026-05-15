@@ -11,7 +11,7 @@ from peccavi.auctor import Auctor, _watermark_score, _context_seed
 from typing import List
 import logging
 from peccavi.constants import SECRET_KEY
-from bert_score import score as bert_score
+from bert_score import BERTScorer
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +36,11 @@ def text_quality_score(text: str, backbone=None, reference_text: str = None) -> 
     
     if reference_text:
         try:
-            P, R, F1 = bert_score([text], [reference_text], lang="en", rescale_with_baseline=True)
+            if not hasattr(text_quality_score, "_scorer"):
+                text_quality_score._scorer = BERTScorer(lang="en", rescale_with_baseline=True)
+            P, R, F1 = text_quality_score._scorer.score([text], [reference_text])
             bert_score_val = F1.mean().item()
-            return (ppl_score + bert_score_val) / 2  # Average
+            return (ppl_score + bert_score_val) / 2
         except Exception as e:
             logger.warning(f"Failed to compute BERTScore: {e}")
             return ppl_score
