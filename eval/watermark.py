@@ -47,6 +47,8 @@ def run_peccavi(
         auctor.theta = magister.theta
         wm_text = auctor.generate(prompt, max_tokens=100)
 
+        original_score = custos.watermark_score(wm_text)
+
         paraphrases = scriba.paraphrase(wm_text)
         s_eff = custos.effective_score(paraphrases)
 
@@ -54,8 +56,8 @@ def run_peccavi(
         para_scores = [custos.watermark_score(p) for p in paraphrases]
         retention = sum(1 for s in para_scores if s >= threshold) / max(len(para_scores), 1)
 
-        new_theta = magister.update(wm_text, s_eff, reference_text=prompt)
-        original_score = custos.watermark_score(wm_text)
+        # Use original_score for theta update — θ directly controls embedding strength
+        new_theta = magister.update(wm_text, original_score, reference_text=prompt)
 
         record = {
             "generation": gen,

@@ -105,11 +105,9 @@ class Magister:
         else:
             token_ids = generated_text.split()
 
-        seq_len = max(len(token_ids), 1)
         self.history.append(reward)
 
-        # Normalize gradient by seq_len to keep updates stable
-        grad = self._policy_gradient(token_ids) / seq_len
+        grad = self._policy_gradient(token_ids)
 
         # Fixed baseline at chance level: reward > 0.5 → theta increases
         baseline = 0.5
