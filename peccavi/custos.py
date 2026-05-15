@@ -24,7 +24,7 @@ class Custos:
     def watermark_score(self, text: str) -> float:
         """
         S(x_1:T) = (1/T) * Σ_t g(x_t, r_t)
-        Scores only the watermarked portion (last 30%) to match Auctor's coverage.
+        Scores all tokens — correct since Auctor watermarks inline at every generation step.
         """
         if hasattr(self.backbone, 'tokenizer'):
             tokenizer = self.backbone.tokenizer
