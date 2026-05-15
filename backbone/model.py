@@ -129,7 +129,7 @@ class LLaMABackbone:
             messages = [{"role": "user", "content": prompt}]
             prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
+        inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048).to(self.model.device)
         outputs = self.model.generate(
             **inputs, max_new_tokens=max_new_tokens, temperature=temperature,
             top_p=top_p, do_sample=do_sample, output_scores=return_logits,
