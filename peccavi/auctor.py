@@ -139,8 +139,8 @@ class Auctor:
         if len(baseline_ids) < 2:
             return baseline
 
-        # Apply tournament sampling to the last 30% of generated tokens
-        refinement_start = max(1, int(len(baseline_ids) * 0.7))
+        # Apply tournament sampling to all generated tokens
+        refinement_start = 1
         refined_ids = baseline_ids.copy()
 
         for i in range(refinement_start, len(refined_ids)):

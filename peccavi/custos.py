@@ -36,13 +36,6 @@ class Custos:
         if not token_ids:
             return 0.0
 
-        # Only score the last 30% — the portion Auctor actually watermarks
-        refinement_start = max(1, int(len(token_ids) * 0.7))
-        token_ids = token_ids[refinement_start:]
-
-        if not token_ids:
-            return 0.0
-
         scores = []
         for i, tid in enumerate(token_ids):
             # Convert string tokens to int if needed

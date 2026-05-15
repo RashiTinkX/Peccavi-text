@@ -77,14 +77,11 @@ class Magister:
     def _policy_gradient(self, token_ids: List[int]) -> float:
         """
         Approximate ∇_θ log p_w(x) = Σ_t g(x_t, r_t)
-        Only over the watermarked portion (last 30%) to match Auctor's coverage.
+        over all tokens since Auctor now watermarks the full generated text.
         """
-        refinement_start = max(1, int(len(token_ids) * 0.7))
-        watermarked_ids = token_ids[refinement_start:]
         grad = 0.0
-        for i, tid in enumerate(watermarked_ids):
-            context = token_ids[:refinement_start + i]
-            r_t = _context_seed(context, self.secret_key)
+        for i, tid in enumerate(token_ids):
+            r_t = _context_seed(token_ids[:i], self.secret_key)
             g = _watermark_score(tid, r_t)
             grad += g
         return grad
