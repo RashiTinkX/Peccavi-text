@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-PECCAVI (Policy-Enhanced Content Certification and Authenticity Verification Infrastructure) is a multi-agent LLM watermarking framework. Its goal is to embed an invisible, statistically detectable signal into AI-generated text such that:
+PECCAVI is a multi-agent LLM watermarking framework. Its goal is to embed an invisible, statistically detectable signal into AI-generated text such that:
 
 1. The watermark survives adversarial paraphrase attacks
 2. A detector can reliably distinguish watermarked from human text (AUC-ROC ≥ 0.90)
