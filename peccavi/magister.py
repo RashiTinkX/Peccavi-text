@@ -84,11 +84,6 @@ class Magister:
             grad += g
         return grad
 
-    def _discounted_reward(self, reward: float, seq_len: int) -> float:
-        if abs(self.gamma - 1.0) > 1e-6:
-            return reward * (1.0 - self.gamma ** seq_len) / (1.0 - self.gamma)
-        return reward * seq_len
-
     def update(
         self,
         generated_text: str,
@@ -111,15 +106,17 @@ class Magister:
             token_ids = generated_text.split()
 
         seq_len = max(len(token_ids), 1)
-        discounted_reward = self._discounted_reward(reward, seq_len)
-        baseline = sum(self.history) / len(self.history) if self.history else 0.0
-        self.history.append(discounted_reward)
+        self.history.append(reward)
 
-        grad = self._policy_gradient(token_ids)
-        advantage = discounted_reward - baseline
+        # Normalize gradient by seq_len to keep updates stable
+        grad = self._policy_gradient(token_ids) / seq_len
+
+        # Fixed baseline at chance level: reward > 0.5 → theta increases
+        baseline = 0.5
+        advantage = reward - baseline
 
         self.theta += self.alpha * grad * advantage
-        self.theta = max(0.1, min(self.theta, 10.0))   # clamp
+        self.theta = max(0.1, min(self.theta, 10.0))
 
         logger.debug(
             f"θ updated: {self.theta:.4f} | reward: {reward:.4f} | "
