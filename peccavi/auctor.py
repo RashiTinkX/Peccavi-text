@@ -5,10 +5,8 @@ Implements the modified distribution:
     p_w(x_t | x_<t, θ) ∝ p_LM(x_t | x_<t) * exp(θ * g(x_t, r_t))
 where g(x_t, r_t) is computed via tournament sampling over candidate tokens.
 
-Hybrid approach:
-1. Generate baseline text with backbone (preserves coherence)
-2. Apply tournament sampling to final ~20% of tokens (embeds watermark signal)
-This balances methodology fidelity with output quality.
+Inline approach: tournament sampling applied at every generation step,
+not post-hoc, so the autoregressive coherence chain is preserved.
 """
 
 from __future__ import annotations
@@ -112,50 +110,47 @@ class Auctor:
 
     def generate(self, prompt: str, max_tokens: int = 200) -> str:
         """
-        Hybrid watermarked generation:
-        1. Generate baseline text with backbone (normal LM generation)
-        2. Apply tournament sampling to refine ~20% of final tokens with watermark bias
-
-        Returns: coherent watermarked text
+        Inline watermarked generation: tournament sampling applied at every
+        token step so each token is chosen under the watermarked distribution
+        p_w(x_t | x_<t) ∝ p_LM * exp(θ·g(x_t, r_t)).
+        This preserves autoregressive coherence — no post-hoc refinement.
         """
-        # API backends have no tokenizer — return plain generation without watermarking
         if not hasattr(self.backbone, "tokenizer"):
             raw = self.backbone.generate(prompt, max_new_tokens=max_tokens)
             return raw["text"] if isinstance(raw, dict) else raw
 
         tokenizer = self.backbone.tokenizer
 
-        # backbone.generate() returns {"text": "..."} and expects max_new_tokens
-        raw = self.backbone.generate(prompt, max_new_tokens=max_tokens)
-        baseline = raw["text"] if isinstance(raw, dict) else raw
+        # Apply chat template if present
+        formatted_prompt = prompt
+        if hasattr(tokenizer, 'chat_template') and tokenizer.chat_template is not None:
+            messages = [{"role": "user", "content": prompt}]
+            formatted_prompt = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
 
-        if not baseline.strip():
-            return ""
+        prompt_ids = tokenizer.encode(formatted_prompt, add_special_tokens=False)
+        generated_ids: List[int] = []
+        eos_token_id = tokenizer.eos_token_id
 
-        # backbone already strips prompt tokens — encode only the generated text
-        baseline_ids = tokenizer.encode(baseline, add_special_tokens=False)
-        prompt_ids = tokenizer.encode(prompt, add_special_tokens=False)
-
-        if len(baseline_ids) < 2:
-            return baseline
-
-        # Apply tournament sampling to all generated tokens
-        refinement_start = 1
-        refined_ids = baseline_ids.copy()
-
-        for i in range(refinement_start, len(refined_ids)):
-            context_ids_prefix = prompt_ids + refined_ids[:i]
-            context_text = tokenizer.decode(context_ids_prefix, skip_special_tokens=True)
+        for _ in range(max_tokens):
+            context_ids_full = prompt_ids + generated_ids
+            context_text = tokenizer.decode(context_ids_full, skip_special_tokens=True)
 
             try:
-                # seed_ids uses only generated tokens to match Custos detection context
-                new_token, _ = self._tournament_sample(context_text, refined_ids[:i])
-                refined_ids[i] = new_token
+                new_token, _ = self._tournament_sample(context_text, generated_ids)
             except Exception:
-                pass
+                break
 
-        result = tokenizer.decode(refined_ids, skip_special_tokens=True)
-        return result if result.strip() else baseline
+            if eos_token_id is not None and new_token == eos_token_id:
+                break
+
+            generated_ids.append(new_token)
+
+        if not generated_ids:
+            return ""
+
+        return tokenizer.decode(generated_ids, skip_special_tokens=True)
 
 
 
