@@ -27,7 +27,7 @@ watermarking:
   theta_init: 2.0              # initial watermark bias parameter
   theta_min: 0.1
   theta_max: 10.0
-  tournament_k: 8              # top-k candidates in tournament sampling
+  tournament_k: 16             # top-k candidates in tournament sampling
   secret_key: "AIISC-SECRET"  # change in production
   detection_threshold: 0.52   # score >= threshold → watermarked
 
@@ -40,7 +40,7 @@ policy_learning:
   gamma: 0.99                  # discount factor
   lambda_wm: 0.6               # weight for watermark score in reward
   nu_quality: 0.4              # weight for text quality in reward
-  generations: 10              # training generations
+  generations: 20              # training generations
   n_eval_samples: 100          # human + watermarked samples each for AUC-ROC
 
 success_criteria:
