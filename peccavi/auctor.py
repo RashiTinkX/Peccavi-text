@@ -59,16 +59,11 @@ class Auctor:
         tokenizer = self.backbone.tokenizer
         
         # Get raw logits
-        try:
-            inputs = tokenizer(context, return_tensors="pt").to(self.backbone.model.device)
-            with torch.no_grad():
-                outputs = self.backbone.model(**inputs)
-                logits = outputs.logits[:, -1, :].squeeze(0)
-        except Exception:
-            inputs = tokenizer(context, return_tensors="pt").to(self.backbone.model.device)
-            with torch.no_grad():
-                outputs = self.backbone.model(**inputs)
-                logits = outputs.logits[:, -1, :].squeeze(0)
+        inputs = tokenizer(context, return_tensors="pt", truncation=True, max_length=2048).to(self.backbone.model.device)
+        with torch.no_grad():
+            outputs = self.backbone.model(**inputs)
+            logits = outputs.logits[:, -1, :].squeeze(0)
+        logits = torch.nan_to_num(logits, nan=0.0, posinf=1e4, neginf=-1e4)
         
         vocab_size = logits.shape[0]
         k = min(self.tournament_k, vocab_size - 1)
@@ -102,16 +97,18 @@ class Auctor:
             biased_scores.append((tid, biased_logit, g_score))
         
         # Sample from re-weighted distribution
-        try:
-            logits_array = torch.tensor([s[1] for s in biased_scores], device=logits.device)
-            probs = torch.softmax(logits_array, dim=0)
-            idx = torch.multinomial(probs, 1).item()
-            winner_tid, _, winner_g_score = biased_scores[idx]
-            return winner_tid, winner_g_score
-        except Exception:
-            # Fallback to highest biased logit
+        logits_array = torch.tensor([s[1] for s in biased_scores], dtype=torch.float32, device=logits.device)
+        logits_array = torch.nan_to_num(logits_array, nan=0.0, posinf=1e4, neginf=-1e4)
+        probs = torch.softmax(logits_array, dim=0)
+        probs = probs.clamp(min=0.0)
+        prob_sum = probs.sum()
+        if prob_sum <= 0 or not torch.isfinite(prob_sum):
             winner_tid, _, winner_g_score = max(biased_scores, key=lambda x: x[1])
             return winner_tid, winner_g_score
+        probs = probs / prob_sum
+        idx = torch.multinomial(probs, 1).item()
+        winner_tid, _, winner_g_score = biased_scores[idx]
+        return winner_tid, winner_g_score
 
     def generate(self, prompt: str, max_tokens: int = 200) -> str:
         """

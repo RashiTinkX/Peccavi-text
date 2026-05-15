@@ -124,16 +124,23 @@ class LLaMABackbone:
     @torch.no_grad()
     def _generate_transformers(self, prompt, max_new_tokens, temperature, top_p, do_sample, return_logits):
         """Generate text using local transformers model."""
+        from transformers import LogitsProcessor, LogitsProcessorList
+
+        class _NanInfClamp(LogitsProcessor):
+            def __call__(self, input_ids, scores):
+                return torch.nan_to_num(scores, nan=0.0, posinf=1e4, neginf=-1e4)
+
         # Handle chat models
         if hasattr(self.tokenizer, 'chat_template') and self.tokenizer.chat_template is not None:
             messages = [{"role": "user", "content": prompt}]
             prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        
+
         inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=2048).to(self.model.device)
         outputs = self.model.generate(
             **inputs, max_new_tokens=max_new_tokens, temperature=temperature,
             top_p=top_p, do_sample=do_sample, output_scores=return_logits,
             return_dict_in_generate=True,
+            logits_processor=LogitsProcessorList([_NanInfClamp()]),
         )
         generated_ids = outputs.sequences[0][inputs["input_ids"].shape[1]:]
         text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
