@@ -24,7 +24,7 @@ class Custos:
     def watermark_score(self, text: str) -> float:
         """
         S(x_1:T) = (1/T) * Σ_t g(x_t, r_t)
-        Average watermark score across all tokens in the text.
+        Scores only the watermarked portion (last 30%) to match Auctor's coverage.
         """
         if hasattr(self.backbone, 'tokenizer'):
             tokenizer = self.backbone.tokenizer
@@ -32,7 +32,14 @@ class Custos:
         else:
             # Fallback for API backends
             token_ids = text.split()
-        
+
+        if not token_ids:
+            return 0.0
+
+        # Only score the last 30% — the portion Auctor actually watermarks
+        refinement_start = max(1, int(len(token_ids) * 0.7))
+        token_ids = token_ids[refinement_start:]
+
         if not token_ids:
             return 0.0
 

@@ -74,7 +74,7 @@ def run_benchmarks(
         # Single backbone mode
         if backbone is None:
             raise ValueError("Either backbone or baseline_config must be provided")
-        pec_out = run_peccavi(backbone, generations=5, n_eval_samples=100, verbose=verbose)
+        pec_out = run_peccavi(backbone, generations=5, n_paraphrases=10, n_eval_samples=100, verbose=verbose)
         report["peccavi"] = _peccavi_summary(pec_out)
 
     _print_summary(report)
