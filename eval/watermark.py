@@ -100,7 +100,7 @@ def run_peccavi(
 
     eval_prompts = praeco.batch_prompts(n_eval_samples)
 
-    human_texts = [
+    baseline_texts = [
         backbone.generate(p, max_new_tokens=100)['text']
         for p in eval_prompts
     ]
@@ -110,12 +110,12 @@ def run_peccavi(
     ]
 
     labels = [0] * n_eval_samples + [1] * n_eval_samples
-    z_scores = [custos.z_score(t) for t in human_texts + wm_texts_eval]
+    z_scores = [custos.z_score(t) for t in baseline_texts + wm_texts_eval]
     auc = roc_auc_score(labels, z_scores)
 
     z_threshold = 4.0
-    fp = sum(1 for t in human_texts if custos.z_score(t) >= z_threshold)
-    fpr = fp / len(human_texts)
+    fp = sum(1 for t in baseline_texts if custos.z_score(t) >= z_threshold)
+    fpr = fp / len(baseline_texts)
 
     # Build detailed eval records (paraphrases on watermarked texts only)
     logger.info("Building detailed eval records...")
@@ -129,7 +129,7 @@ def run_peccavi(
             "phase": "eval",
             "dataset": praeco.get_source(prompt),
             "prompt": prompt,
-            "human_text": human_texts[i],
+            "baseline_text": baseline_texts[i],
             "watermarked_text": wm_text,
             "paraphrases": paraphrases,
             "scores": {
