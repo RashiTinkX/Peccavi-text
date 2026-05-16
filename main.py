@@ -78,7 +78,11 @@ def mode_train(backbone):
     _train_peccavi(backbone)
 
 
+THETA_CHECKPOINT = "./results/theta_checkpoint.json"
+
+
 def _train_peccavi(backbone):
+    import json
     from eval.watermark import run_peccavi
     cfg = load_config("configs/peccavi.yaml")
     pl_cfg = cfg.get("policy_learning", {})
@@ -90,11 +94,16 @@ def _train_peccavi(backbone):
         n_eval_samples=pl_cfg.get("n_eval_samples", 100),
         verbose=True,
     )
+    theta_final = summary["theta_final"]
+    os.makedirs(os.path.dirname(THETA_CHECKPOINT), exist_ok=True)
+    with open(THETA_CHECKPOINT, "w") as f:
+        json.dump({"theta": theta_final}, f)
     logger.info(
         f"PECCAVI training done. "
-        f"θ_final={summary['theta_final']} | "
+        f"θ_final={theta_final} | "
         f"S_eff={summary['effective_score_final']:.4f} | "
-        f"Improvement={summary['effective_score_improvement_pct']:.1f}%"
+        f"Improvement={summary['effective_score_improvement_pct']:.1f}% | "
+        f"θ saved → {THETA_CHECKPOINT}"
     )
 
 

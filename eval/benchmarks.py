@@ -14,6 +14,18 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+THETA_CHECKPOINT = "./results/theta_checkpoint.json"
+
+
+def _load_theta(checkpoint_path: str = THETA_CHECKPOINT) -> float:
+    if os.path.exists(checkpoint_path):
+        with open(checkpoint_path) as f:
+            theta = json.load(f).get("theta", 2.0)
+        logger.info(f"Loaded θ={theta:.4f} from checkpoint {checkpoint_path}")
+        return theta
+    logger.info("No θ checkpoint found — starting from theta_init=2.0")
+    return 2.0
+
 
 def _peccavi_summary(pec_out: Dict) -> Dict:
     robustness = pec_out.get("avg_retention_rate", pec_out["effective_score_final"]) * 100
@@ -74,7 +86,8 @@ def run_benchmarks(
         # Single backbone mode
         if backbone is None:
             raise ValueError("Either backbone or baseline_config must be provided")
-        pec_out = run_peccavi(backbone, generations=5, n_paraphrases=10, n_eval_samples=100, verbose=verbose)
+        theta_init = _load_theta()
+        pec_out = run_peccavi(backbone, generations=5, n_paraphrases=10, n_eval_samples=100, verbose=verbose, theta_init=theta_init)
         report["peccavi"] = _peccavi_summary(pec_out)
 
     _print_summary(report)

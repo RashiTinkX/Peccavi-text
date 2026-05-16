@@ -31,12 +31,13 @@ def run_peccavi(
     n_paraphrases: int = 5,
     n_eval_samples: int = 100,
     verbose: bool = True,
+    theta_init: float = 2.0,
 ) -> Dict:
     praeco = Praeco()
-    auctor = Auctor(backbone)
+    auctor = Auctor(backbone, theta=theta_init)
     scriba = Scriba(backbone, n_variants=n_paraphrases)
     custos = Custos(backbone)
-    magister = Magister(backbone, theta_init=auctor.theta)
+    magister = Magister(backbone, theta_init=theta_init)
 
     history = []
 
