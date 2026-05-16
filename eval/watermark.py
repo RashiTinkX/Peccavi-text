@@ -51,10 +51,11 @@ def run_peccavi(
 
         paraphrases = scriba.paraphrase(wm_text)
         s_eff = custos.effective_score(paraphrases)
+        z_eff = custos.effective_z_score(paraphrases)
 
-        threshold = 0.52
-        para_scores = [custos.watermark_score(p) for p in paraphrases]
-        retention = sum(1 for s in para_scores if s >= threshold) / max(len(para_scores), 1)
+        z_threshold = 4.0
+        para_z_scores = [custos.z_score(p) for p in paraphrases]
+        retention = sum(1 for z in para_z_scores if z >= z_threshold) / max(len(para_z_scores), 1)
 
         # Use original_score for theta update — θ directly controls embedding strength
         new_theta = magister.update(wm_text, original_score, reference_text=prompt)
@@ -64,6 +65,7 @@ def run_peccavi(
             "theta": round(new_theta, 4),
             "original_score": round(original_score, 4),
             "effective_score": round(s_eff, 4),
+            "effective_z_score": round(z_eff, 4),
             "retention_rate": round(retention, 4),
             "readability": readability_score(wm_text),
         }
@@ -90,11 +92,12 @@ def run_peccavi(
     ]
 
     labels = [0] * n_eval_samples + [1] * n_eval_samples
-    scores = [custos.watermark_score(t) for t in human_texts + wm_texts_eval]
-    auc = roc_auc_score(labels, scores)
+    # z-scores account for text length and give better AUC separation than raw mean scores
+    z_scores = [custos.z_score(t) for t in human_texts + wm_texts_eval]
+    auc = roc_auc_score(labels, z_scores)
 
-    threshold = 0.52
-    fp = sum(1 for t in human_texts if custos.watermark_score(t) >= threshold)
+    z_threshold = 4.0  # p < 0.00003 under H0
+    fp = sum(1 for t in human_texts if custos.z_score(t) >= z_threshold)
     fpr = fp / len(human_texts)
 
     # Final summary
