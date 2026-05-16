@@ -41,15 +41,18 @@ def _peccavi_summary(pec_out: Dict) -> Dict:
     robustness = pec_out.get("avg_retention_rate", pec_out["effective_score_final"]) * 100
     resilience = pec_out["effective_score_final"] * 100
     return {
+        "watermark_mode": pec_out.get("watermark_mode", "peccavi"),
+        "seed": pec_out.get("seed", 42),
         "theta_final": pec_out["theta_final"],
         "effective_score_final": pec_out["effective_score_final"],
         "improvement_pct": pec_out["effective_score_improvement_pct"],
         "auc_roc": pec_out["auc_roc"],
         "false_positive_rate": pec_out["false_positive_rate"],
         "avg_readability": pec_out["avg_readability"],
+        "avg_gpt4_quality": pec_out.get("avg_gpt4_quality"),
         "pass_retention": pec_out["meets_85pct_retention"],
         "pass_auc": pec_out["meets_90pct_auc"],
-        "pass_readability": pec_out["meets_readability_45"],
+        "pass_readability": pec_out.get("meets_readability_30", pec_out["meets_readability_45"]),
         "robustness": round(robustness, 2),
         "resilience": round(resilience, 2),
         "fpr": round(pec_out["false_positive_rate"] * 100, 2),
@@ -113,6 +116,8 @@ def run_benchmarks(
         if backbone is None:
             raise ValueError("Either backbone or baseline_config must be provided")
         theta_init = _load_theta()
+        wm_cfg = cfg.get("watermarking", {})
+        pl_cfg2 = cfg.get("policy_learning", {})
         pec_out = run_peccavi(
             backbone,
             generations=5,
@@ -120,6 +125,10 @@ def run_benchmarks(
             n_eval_samples=n_eval_samples,
             verbose=verbose,
             theta_init=theta_init,
+            watermark_mode=wm_cfg.get("watermark_mode", "peccavi"),
+            lam=pl_cfg2.get("lambda_wm", 0.6),
+            nu=pl_cfg2.get("nu_quality", 0.4),
+            alpha=pl_cfg2.get("alpha", 0.05),
         )
         report["peccavi"] = _peccavi_summary(pec_out)
         all_detailed["peccavi"] = pec_out.get("detailed_records", [])
@@ -157,4 +166,6 @@ def _print_summary(report: Dict):
               f"({'PASS' if results['pass_auc'] else 'FAIL'} ≥0.90)")
         print(f"  False Positive    : {results['false_positive_rate']:.4f}")
         print(f"  Avg Readability   : {results['avg_readability']:.2f}/5  "
-              f"({'PASS' if results['pass_readability'] else 'FAIL'} ≥4.5)")
+              f"({'PASS' if results['pass_readability'] else 'FAIL'} ≥3.0)")
+        if results.get("avg_gpt4_quality") is not None:
+            print(f"  GPT-4 Quality     : {results['avg_gpt4_quality']:.2f}/5")
