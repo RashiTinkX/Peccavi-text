@@ -5,12 +5,12 @@ from peccavi.eval import run_evaluation, refresh_baselines
 
 
 def build_ui():
-    with gr.Blocks(title="PECCAVI-TEXT | AIISC") as demo:
+    with gr.Blocks(title="PECCAVI-TEXT") as demo:
 
         gr.Markdown("""
 # PECCAVI-TEXT — Evaluation Dashboard
-**AI Integrity & Safety Consortium** · Watermarking & Content Authenticity
-*Speculative Decoding · Tournament Sampling · Policy Learning over Simulated Generations*
+**Watermarking & Content Authenticity**
+*Tournament Sampling · Policy Learning over Simulated Generations*
 
 ---
 Enter a prompt. PECCAVI watermarks it, Scriba attacks it with 5 adversarial paraphrases,

@@ -1,6 +1,5 @@
 """
 main.py
-AIISC AI Integrity & Safety Consortium
 Master entry point for PECCAVI watermarking via a shared LLaMA backbone.
 
 Usage:
@@ -32,7 +31,7 @@ logging.basicConfig(
         logging.FileHandler("aiisc.log"),
     ],
 )
-logger = logging.getLogger("AIISC.main")
+logger = logging.getLogger("peccavi.main")
 
 
 def set_seed(seed: int):

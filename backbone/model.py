@@ -17,12 +17,12 @@ if _root not in sys.path:
 try:
     import torch
 except ImportError:
-    raise ImportError("\n[AIISC] torch not found.\nRun: pip install torch\n")
+    raise ImportError("\n[PECCAVI] torch not found.\nRun: pip install torch\n")
 
 try:
     from transformers import AutoTokenizer, AutoModelForCausalLM
 except ImportError:
-    raise ImportError("\n[AIISC] transformers not found.\nRun: pip install transformers accelerate\n")
+    raise ImportError("\n[PECCAVI] transformers not found.\nRun: pip install transformers accelerate\n")
 
 try:
     from transformers import BitsAndBytesConfig
@@ -61,12 +61,14 @@ class LLaMABackbone:
             self.api_key = os.getenv("OPENAI_API_KEY")
         elif backend == "anthropic":
             self.api_key = os.getenv("ANTHROPIC_API_KEY")
+        elif backend == "deepseek":
+            self.api_key = os.getenv("DEEPSEEK_API_KEY")
         else:
             self.api_key = os.getenv("API_KEY")
 
         if backend == "transformers":
             # Existing local model loading logic
-            print(f"[AIISC] Loading tokenizer: {model_name}", flush=True)
+            print(f"[PECCAVI] Loading tokenizer: {model_name}", flush=True)
             self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
 
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -74,7 +76,7 @@ class LLaMABackbone:
 
             load_kwargs: dict = {"device_map": device, "trust_remote_code": True}
             if load_in_4bit and BNB_AVAILABLE:
-                print("[AIISC] Using 4-bit quantization", flush=True)
+                print("[PECCAVI] Using 4-bit quantization", flush=True)
                 load_kwargs["quantization_config"] = BitsAndBytesConfig(
                     load_in_4bit=True,
                     bnb_4bit_use_double_quant=True,
@@ -82,14 +84,14 @@ class LLaMABackbone:
                     bnb_4bit_compute_dtype=torch.bfloat16,
                 )
             else:
-                print("[AIISC] bitsandbytes unavailable — using fp16", flush=True)
+                print("[PECCAVI] bitsandbytes unavailable — using fp16", flush=True)
                 load_kwargs["dtype"] = torch.float16
 
-            print("[AIISC] Loading model weights...", flush=True)
+            print("[PECCAVI] Loading model weights...", flush=True)
             self.model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
 
             self.model.eval()
-            print("[AIISC] Backbone ready!", flush=True)
+            print("[PECCAVI] Backbone ready!", flush=True)
 
         elif backend == "openai":
             if openai is None:
@@ -97,14 +99,14 @@ class LLaMABackbone:
             openai.api_key = self.api_key
             self.client = openai.OpenAI(api_key=self.api_key)
             self.vocab_size = 100000  # Approximate for token counting
-            print("[AIISC] OpenAI backend ready!", flush=True)
+            print("[PECCAVI] OpenAI backend ready!", flush=True)
 
         elif backend == "anthropic":
             if anthropic is None:
                 raise ImportError("anthropic not installed. Run: pip install anthropic")
             self.client = anthropic.Anthropic(api_key=self.api_key)
             self.vocab_size = 100000  # Approximate
-            print("[AIISC] Anthropic backend ready!", flush=True)
+            print("[PECCAVI] Anthropic backend ready!", flush=True)
 
         else:
             raise ValueError(f"Unsupported backend: {backend}")
