@@ -11,10 +11,13 @@ from typing import Dict
 import json
 import os
 import logging
+import yaml
 
 logger = logging.getLogger(__name__)
 
 THETA_CHECKPOINT = "./results/theta_checkpoint.json"
+DETAILED_OUTPUT = "./results/detailed_results.json"
+CONFIG_PATH = "configs/peccavi.yaml"
 
 
 def _load_theta(checkpoint_path: str = THETA_CHECKPOINT) -> float:
@@ -25,6 +28,13 @@ def _load_theta(checkpoint_path: str = THETA_CHECKPOINT) -> float:
         return theta
     logger.info("No θ checkpoint found — starting from theta_init=2.0")
     return 2.0
+
+
+def _load_config() -> dict:
+    if os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH) as f:
+            return yaml.safe_load(f)
+    return {}
 
 
 def _peccavi_summary(pec_out: Dict) -> Dict:
@@ -49,53 +59,81 @@ def _peccavi_summary(pec_out: Dict) -> Dict:
 
 def run_benchmarks(
     backbone: LLaMABackbone = None,
-    output_path: str = "./benchmark_results.json",
+    output_path: str = "./results/benchmark_results.json",
     verbose: bool = True,
     baseline_config: Dict = None,
 ) -> Dict:
     """
     Run PECCAVI benchmarks. If baseline_config provided, run multiple baseline models.
+    n_eval_samples and n_paraphrases are read from configs/peccavi.yaml.
     """
+    cfg = _load_config()
+    pl_cfg = cfg.get("policy_learning", {})
+    n_eval_samples = pl_cfg.get("n_eval_samples", 100)
+    n_paraphrases = cfg.get("agents", {}).get("scriba_n_variants", 10)
+
     report: Dict = {}
+    all_detailed: Dict = {}
 
     print("\n" + "═" * 60)
     print("  BENCHMARK: PECCAVI - Watermarking & Content Authenticity")
+    print(f"  Eval samples: {n_eval_samples} | Paraphrases: {n_paraphrases}")
     print("═" * 60)
-    
-    # If baseline_config provided, run multiple models
+
     if baseline_config:
         baselines = baseline_config.get("baseline_models", [])
         for baseline in baselines:
             model_name = baseline.get("name")
             model_id = baseline.get("backbone")
             backend = baseline.get("backend", "transformers")
-            
+            api_key = baseline.get("api_key")
+
             print(f"\n  Running baseline: {model_name}...")
             try:
-                # Create backbone for this baseline
                 model_backbone = LLaMABackbone(
                     model_name=model_id,
                     backend=backend,
+                    api_key=api_key,
                 )
-                pec_out = run_peccavi(model_backbone, generations=5, n_eval_samples=100, verbose=verbose)
+                theta_init = _load_theta()
+                pec_out = run_peccavi(
+                    model_backbone,
+                    generations=5,
+                    n_paraphrases=n_paraphrases,
+                    n_eval_samples=n_eval_samples,
+                    verbose=verbose,
+                    theta_init=theta_init,
+                )
                 report[model_name] = _peccavi_summary(pec_out)
+                all_detailed[model_name] = pec_out.get("detailed_records", [])
             except Exception as e:
                 logger.error(f"Error running baseline {model_name}: {e}")
                 report[model_name] = {"error": str(e)}
     else:
-        # Single backbone mode
         if backbone is None:
             raise ValueError("Either backbone or baseline_config must be provided")
         theta_init = _load_theta()
-        pec_out = run_peccavi(backbone, generations=5, n_paraphrases=10, n_eval_samples=100, verbose=verbose, theta_init=theta_init)
+        pec_out = run_peccavi(
+            backbone,
+            generations=5,
+            n_paraphrases=n_paraphrases,
+            n_eval_samples=n_eval_samples,
+            verbose=verbose,
+            theta_init=theta_init,
+        )
         report["peccavi"] = _peccavi_summary(pec_out)
+        all_detailed["peccavi"] = pec_out.get("detailed_records", [])
 
     _print_summary(report)
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(report, f, indent=2)
-    print(f"\n  Results saved → {output_path}")
+    print(f"\n  Summary saved → {output_path}")
+
+    with open(DETAILED_OUTPUT, "w") as f:
+        json.dump(all_detailed, f, indent=2)
+    print(f"  Detailed records saved → {DETAILED_OUTPUT}")
 
     return report
 
@@ -109,7 +147,7 @@ def _print_summary(report: Dict):
         if isinstance(results, dict) and "error" in results:
             print(f"\n  {model_name}: ERROR - {results['error']}")
             continue
-        
+
         print(f"\n  Model: {model_name}")
         print(f"  θ_final           : {results['theta_final']}")
         print(f"  Effective Score   : {results['effective_score_final']:.4f}  "

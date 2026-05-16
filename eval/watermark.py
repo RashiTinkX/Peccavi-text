@@ -12,7 +12,7 @@ from peccavi.scriba import Scriba
 from peccavi.custos import Custos
 from peccavi.magister import Magister
 from sklearn.metrics import roc_auc_score
-from typing import Dict
+from typing import Dict, List
 import textstat
 import logging
 
@@ -40,9 +40,10 @@ def run_peccavi(
     magister = Magister(backbone, theta_init=theta_init)
 
     history = []
+    detailed_records: List[Dict] = []
 
     # Main generation loop
-    for gen in range(1, generations + 1):          # ← restored
+    for gen in range(1, generations + 1):
         prompt = praeco.next_prompt()
 
         auctor.theta = magister.theta
@@ -58,7 +59,6 @@ def run_peccavi(
         para_z_scores = [custos.z_score(p) for p in paraphrases]
         retention = sum(1 for z in para_z_scores if z >= z_threshold) / max(len(para_z_scores), 1)
 
-        # Use original_score for theta update — θ directly controls embedding strength
         new_theta = magister.update(wm_text, original_score, reference_text=prompt)
 
         record = {
@@ -72,7 +72,24 @@ def run_peccavi(
         }
         history.append(record)
 
-        if verbose:                                 # ← fixed indentation
+        detailed_records.append({
+            "phase": "training",
+            "generation": gen,
+            "dataset": praeco.get_source(prompt),
+            "prompt": prompt,
+            "watermarked_text": wm_text,
+            "paraphrases": paraphrases,
+            "scores": {
+                "s_orig": round(original_score, 4),
+                "s_eff": round(s_eff, 4),
+                "z_eff": round(z_eff, 4),
+                "retention_rate": round(retention, 4),
+                "theta": round(new_theta, 4),
+                "readability": readability_score(wm_text),
+            },
+        })
+
+        if verbose:
             logger.info(
                 f"Gen {gen:>3} | θ={new_theta:.4f} | "
                 f"S_orig={original_score:.4f} | S_eff={s_eff:.4f}"
@@ -93,13 +110,35 @@ def run_peccavi(
     ]
 
     labels = [0] * n_eval_samples + [1] * n_eval_samples
-    # z-scores account for text length and give better AUC separation than raw mean scores
     z_scores = [custos.z_score(t) for t in human_texts + wm_texts_eval]
     auc = roc_auc_score(labels, z_scores)
 
-    z_threshold = 4.0  # p < 0.00003 under H0
+    z_threshold = 4.0
     fp = sum(1 for t in human_texts if custos.z_score(t) >= z_threshold)
     fpr = fp / len(human_texts)
+
+    # Build detailed eval records (paraphrases on watermarked texts only)
+    logger.info("Building detailed eval records...")
+    for i, prompt in enumerate(eval_prompts):
+        wm_text = wm_texts_eval[i]
+        paraphrases = scriba.paraphrase(wm_text)
+        s_orig = custos.watermark_score(wm_text)
+        s_eff_i = custos.effective_score(paraphrases)
+        z_i = custos.z_score(wm_text)
+        detailed_records.append({
+            "phase": "eval",
+            "dataset": praeco.get_source(prompt),
+            "prompt": prompt,
+            "human_text": human_texts[i],
+            "watermarked_text": wm_text,
+            "paraphrases": paraphrases,
+            "scores": {
+                "s_orig": round(s_orig, 4),
+                "z_score": round(z_i, 4),
+                "s_eff": round(s_eff_i, 4),
+                "is_watermarked": z_i >= z_threshold,
+            },
+        })
 
     # Final summary
     first_eff = history[0]["effective_score"]
@@ -125,5 +164,6 @@ def run_peccavi(
         "avg_readability": avg_readability,
         "meets_readability_45": avg_readability >= 4.5,
         "history": history,
+        "detailed_records": detailed_records,
     }
     return summary

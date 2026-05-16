@@ -4,9 +4,9 @@ Agent: Praeco Dynamic Prompting Orchestrator.
 Manages prompt construction each PECCAVI generation round.
 """
 
-from __future__ import annotations #replace with same LM as Auctor eventually
+from __future__ import annotations
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 import csv
 import random
 
@@ -27,20 +27,28 @@ PROMPT_BANK = [
 class Praeco:
     def __init__(self, custom_prompts: List[str] | None = None, dataset_dir: str | Path | None = None):
         if custom_prompts is not None:
-            prompts = custom_prompts
+            self.prompts = custom_prompts
+            self.prompt_sources = {p: "custom" for p in custom_prompts}
         else:
-            prompts = self.load_prompts_from_dataset(dataset_dir=dataset_dir)
-        self.prompts = prompts if prompts else PROMPT_BANK
+            pairs = self.load_prompts_from_dataset(dataset_dir=dataset_dir)
+            if pairs:
+                self.prompts = [p for p, _ in pairs]
+                self.prompt_sources = {p: src for p, src in pairs}
+            else:
+                self.prompts = PROMPT_BANK
+                self.prompt_sources = {p: "builtin" for p in PROMPT_BANK}
         self.prompt_scores = {prompt: 1.0 for prompt in self.prompts}
 
     @staticmethod
-    def load_prompts_from_dataset(dataset_dir: str | Path | None = None) -> List[str]:
+    def load_prompts_from_dataset(dataset_dir: str | Path | None = None) -> List[Tuple[str, str]]:
+        """Returns list of (prompt_text, dataset_name) pairs."""
         dataset_path = Path(dataset_dir) if dataset_dir else DEFAULT_DATASETS_DIR
         if not dataset_path.exists() or not dataset_path.is_dir():
             return []
 
-        prompts: List[str] = []
+        pairs: List[Tuple[str, str]] = []
         for csv_file in sorted(dataset_path.glob("*.csv")):
+            dataset_name = csv_file.stem
             try:
                 with csv_file.open("r", encoding="utf-8", newline="") as handle:
                     reader = csv.DictReader(handle)
@@ -61,11 +69,14 @@ class Praeco:
                             continue
                         prompt_text = prompt_text.strip()
                         if prompt_text:
-                            prompts.append(prompt_text)
+                            pairs.append((prompt_text, dataset_name))
             except Exception:
                 continue
 
-        return prompts
+        return pairs
+
+    def get_source(self, prompt: str) -> str:
+        return self.prompt_sources.get(prompt, "unknown")
 
     def next_prompt(self) -> str:
         weights = [max(self.prompt_scores.get(p, 0.1), 0.1) for p in self.prompts]
