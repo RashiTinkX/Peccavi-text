@@ -20,7 +20,6 @@ import json
 import random
 import numpy as np
 import torch
-from typing import Optional
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,6 +62,38 @@ def init_backbone(config_path: str = "configs/peccavi.yaml"):
 
 
 THETA_CHECKPOINT = "./results/theta_checkpoint.json"
+
+
+def _sanitize(d: dict) -> dict:
+    """Recursively convert numpy scalars / NaN to JSON-safe Python primitives."""
+    import math
+    try:
+        import numpy as _np
+        _NB, _NI, _NF = _np.bool_, _np.integer, _np.floating
+    except ImportError:
+        _NB = _NI = _NF = type(None)
+
+    def _fix(v):
+        if isinstance(v, dict):
+            return {k: _fix(val) for k, val in v.items()}
+        if isinstance(v, list):
+            return [_fix(item) for item in v]
+        if isinstance(v, _NB):
+            return bool(v)
+        if isinstance(v, _NI):
+            return int(v)
+        if isinstance(v, _NF):
+            f = float(v)
+            return None if math.isnan(f) else f
+        if isinstance(v, float) and math.isnan(v):
+            return None
+        return v
+
+    result = _fix(d)
+    # alias expected by eval/compare.py METRICS
+    if "improvement_pct" not in result and "effective_score_improvement_pct" in result:
+        result["improvement_pct"] = result["effective_score_improvement_pct"]
+    return result
 
 
 def _load_theta() -> float:
@@ -116,13 +147,50 @@ def mode_kgw(backbone, args):
     output_path = getattr(args, "output", "./results/kgw_baseline.json")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w") as f:
-        report = {"kgw_baseline": {k: v for k, v in summary.items() if k != "detailed_records"}}
+        report = {"kgw_baseline": _sanitize({k: v for k, v in summary.items() if k != "detailed_records"})}
         json.dump(report, f, indent=2)
 
     logger.info(
         f"KGW done. AUC-ROC={summary['auc_roc']:.4f} | "
         f"FPR={summary['false_positive_rate']:.4f} | "
         f"S_eff={summary['effective_score_final']:.4f}"
+    )
+
+
+def mode_sir(backbone, args):
+    """Run SIR (entropy-aware) baseline evaluation."""
+    from eval.watermark import run_peccavi
+    cfg = load_config(os.path.join(args.config_dir, "sir_baseline.yaml"))
+    wm_cfg = cfg.get("watermarking", {})
+    pl_cfg = cfg.get("policy_learning", {})
+    seed = getattr(args, "seed", 42)
+
+    logger.info("Running SIR (entropy-aware) baseline evaluation...")
+    summary = run_peccavi(
+        backbone,
+        generations=pl_cfg.get("generations", 5),
+        n_paraphrases=cfg.get("agents", {}).get("scriba_n_variants", 10),
+        n_eval_samples=pl_cfg.get("n_eval_samples", 100),
+        verbose=True,
+        theta_init=_load_theta(),
+        watermark_mode="sir",
+        sir_delta=wm_cfg.get("delta", 2.0),
+        sir_gamma=wm_cfg.get("gamma", 0.5),
+        sir_entropy_threshold=wm_cfg.get("entropy_threshold", 1.0),
+        seed=seed,
+    )
+
+    output_path = getattr(args, "output", "./results/sir_baseline.json")
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, "w") as f:
+        report = {"sir_baseline": _sanitize({k: v for k, v in summary.items() if k != "detailed_records"})}
+        json.dump(report, f, indent=2)
+
+    logger.info(
+        f"SIR done. AUC-ROC={summary['auc_roc']:.4f} | "
+        f"FPR={summary['false_positive_rate']:.4f} | "
+        f"S_eff={summary['effective_score_final']:.4f} | "
+        f"PPL_ratio={summary.get('ppl_ratio', 'N/A')}"
     )
 
 
@@ -133,7 +201,8 @@ def mode_train(backbone, args):
 def _train_peccavi(backbone, args=None):
     from eval.watermark import run_peccavi
     cfg_dir = getattr(args, "config_dir", "configs") if args else "configs"
-    cfg = load_config(os.path.join(cfg_dir, "peccavi.yaml"))
+    cfg_file = getattr(args, "config_file", None) if args else None
+    cfg = load_config(cfg_file if cfg_file else os.path.join(cfg_dir, "peccavi.yaml"))
     pl_cfg = cfg.get("policy_learning", {})
     wm_cfg = cfg.get("watermarking", {})
     seed = getattr(args, "seed", 42) if args else 42
@@ -146,23 +215,40 @@ def _train_peccavi(backbone, args=None):
         n_eval_samples=pl_cfg.get("n_eval_samples", 100),
         verbose=True,
         theta_init=wm_cfg.get("theta_init", 2.0),
+        watermark_mode=wm_cfg.get("watermark_mode", "peccavi"),
         lam=pl_cfg.get("lambda_wm", 0.6),
         nu=pl_cfg.get("nu_quality", 0.4),
         alpha=pl_cfg.get("alpha", 0.05),
         seed=seed,
+        checkpoint_path=THETA_CHECKPOINT,
+        adaptive_theta=wm_cfg.get("adaptive_theta", False),
+        theta_min=wm_cfg.get("theta_min", 0.5),
+        theta_max=wm_cfg.get("theta_max", 8.0),
     )
 
     theta_final = summary["theta_final"]
+    w_final = summary.get("w_final")
     os.makedirs(os.path.dirname(THETA_CHECKPOINT), exist_ok=True)
+    ckpt = {"theta": theta_final}
+    if w_final is not None:
+        ckpt["w"] = w_final
     with open(THETA_CHECKPOINT, "w") as f:
-        json.dump({"theta": theta_final}, f)
+        json.dump(ckpt, f)
 
+    # Save results JSON (needed by compare.py and run_ablations.py)
+    output_path = getattr(args, "output", "./results/peccavi_train.json") if args else "./results/peccavi_train.json"
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    with open(output_path, "w") as f:
+        report_data = _sanitize({k: v for k, v in summary.items() if k != "detailed_records"})
+        json.dump({"peccavi": report_data}, f, indent=2)
+
+    w_log = f" | w={[round(x,3) for x in w_final]}" if w_final else ""
     logger.info(
         f"PECCAVI training done. "
-        f"θ_final={theta_final} | "
+        f"θ_base={theta_final}{w_log} | "
         f"S_eff={summary['effective_score_final']:.4f} | "
         f"Improvement={summary['effective_score_improvement_pct']:.1f}% | "
-        f"θ saved → {THETA_CHECKPOINT}"
+        f"θ saved → {THETA_CHECKPOINT} | results → {output_path}"
     )
 
 
@@ -195,11 +281,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--mode", required=True,
-        choices=["eval", "train", "kgw", "infer"],
+        choices=["eval", "train", "kgw", "sir", "infer"],
         help=(
             "eval  - run full PECCAVI benchmarks\n"
             "train - run policy learning over simulated generations\n"
             "kgw   - run KGW baseline evaluation\n"
+            "sir   - run SIR (entropy-aware) baseline evaluation\n"
             "infer - single-prompt watermarking demo"
         ),
     )
@@ -209,6 +296,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--baselines", action="store_true",
                    help="Run against all baseline models defined in config")
     p.add_argument("--config-dir", type=str, default="configs")
+    p.add_argument("--config-file", type=str, default=None,
+                   help="Explicit path to a config YAML (overrides --config-dir default)")
     p.add_argument("--seed", type=int, default=42,
                    help="Random seed for reproducibility")
     return p
@@ -223,10 +312,17 @@ def main():
 
     set_seed(args.seed)
 
-    config_file = "kgw_baseline.yaml" if args.mode == "kgw" else "peccavi.yaml"
-    backbone = init_backbone(
-        config_path=os.path.join(args.config_dir, config_file)
-    )
+    if args.config_file:
+        backbone = init_backbone(config_path=args.config_file)
+    else:
+        config_map = {
+            "kgw": "kgw_baseline.yaml",
+            "sir": "sir_baseline.yaml",
+        }
+        config_filename = config_map.get(args.mode, "peccavi.yaml")
+        backbone = init_backbone(
+            config_path=os.path.join(args.config_dir, config_filename)
+        )
 
     if args.mode == "eval":
         mode_eval(backbone, args)
@@ -234,6 +330,8 @@ def main():
         mode_train(backbone, args)
     elif args.mode == "kgw":
         mode_kgw(backbone, args)
+    elif args.mode == "sir":
+        mode_sir(backbone, args)
     elif args.mode == "infer":
         mode_infer(backbone, args)
     else:

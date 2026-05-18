@@ -6,15 +6,15 @@ model:
   backbone: "meta-llama/Llama-2-7b-chat-hf"
   backend: "transformers"
   api_key: null
-  load_in_4bit: true
-  device: "auto"
+  load_in_4bit: false
+  device: "cuda"
 
 watermarking:
   theta_init: 2.0
   theta_min: 0.1
   theta_max: 10.0
   tournament_k: 16
-  secret_key: "AIISC-SECRET"
+  secret_key: "PECCAVI-SECRET"
   detection_threshold: 0.52
   watermark_mode: "peccavi"
 
@@ -24,10 +24,10 @@ agents:
 policy_learning:
   alpha: 0.05
   gamma: 0.99
-  lambda_wm: 1.0    # full weight on watermark score
-  nu_quality: 0.0   # no quality component
-  generations: 5
-  n_eval_samples: 100
+  lambda_wm: 1.0
+  nu_quality: 0.0
+  generations: 50
+  n_eval_samples: 500
 
 success_criteria:
   watermark_retention_pct: 51

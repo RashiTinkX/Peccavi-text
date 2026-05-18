@@ -1,20 +1,20 @@
 # configs/ablation_fixed_theta.yaml
 # Ablation: fixed theta (alpha=0 disables REINFORCE updates).
-# Tests whether adaptive theta learning actually helps vs a static watermark.
+# Tests whether adaptive theta learning helps vs a static watermark strength.
 
 model:
   backbone: "meta-llama/Llama-2-7b-chat-hf"
   backend: "transformers"
   api_key: null
-  load_in_4bit: true
-  device: "auto"
+  load_in_4bit: false
+  device: "cuda"
 
 watermarking:
   theta_init: 2.0
   theta_min: 0.1
   theta_max: 10.0
   tournament_k: 16
-  secret_key: "AIISC-SECRET"
+  secret_key: "PECCAVI-SECRET"
   detection_threshold: 0.52
   watermark_mode: "peccavi"
 
@@ -22,12 +22,12 @@ agents:
   scriba_n_variants: 10
 
 policy_learning:
-  alpha: 0.0          # disabled — theta stays fixed
+  alpha: 0.0
   gamma: 0.99
   lambda_wm: 0.6
   nu_quality: 0.4
-  generations: 5
-  n_eval_samples: 100
+  generations: 50
+  n_eval_samples: 500
 
 success_criteria:
   watermark_retention_pct: 51

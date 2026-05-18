@@ -77,3 +77,42 @@ def gpt4_quality_score(text: str, prompt: str = None) -> float:
 def quality_score(text: str, prompt: str = None) -> float:
     """Primary quality function: GPT-4 if available, else Flesch."""
     return gpt4_quality_score(text, prompt=prompt)
+
+
+_ppl_model = None
+_ppl_tokenizer = None
+
+
+def _get_ppl_model():
+    global _ppl_model, _ppl_tokenizer
+    if _ppl_model is not None:
+        return _ppl_model, _ppl_tokenizer
+    try:
+        import torch
+        from transformers import GPT2LMHeadModel, GPT2TokenizerFast
+        _ppl_tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
+        _ppl_model = GPT2LMHeadModel.from_pretrained("gpt2")
+        _ppl_model.eval()
+        return _ppl_model, _ppl_tokenizer
+    except Exception as e:
+        logger.warning(f"GPT-2 PPL model unavailable: {e}")
+        return None, None
+
+
+def perplexity(text: str) -> float:
+    """
+    Compute GPT-2 perplexity of text. Lower = more natural.
+    Used to measure fluency cost of watermarking (PPL_watermarked / PPL_baseline).
+    """
+    model, tokenizer = _get_ppl_model()
+    if model is None:
+        return float("nan")
+    try:
+        import torch
+        inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
+        with torch.no_grad():
+            loss = model(**inputs, labels=inputs["input_ids"]).loss
+        return round(float(torch.exp(loss)), 4)
+    except Exception as e:
+        logger.warning(f"PPL computation failed: {e}")
+        return float("nan")

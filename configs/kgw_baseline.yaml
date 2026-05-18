@@ -11,7 +11,7 @@ model:
 watermarking:
   delta: 2.0
   gamma: 0.5
-  secret_key: "AIISC-SECRET"
+  secret_key: "PECCAVI-SECRET"
   watermark_mode: "kgw"
 
 agents:
@@ -19,7 +19,7 @@ agents:
 
 policy_learning:
   generations: 5
-  n_eval_samples: 100
+  n_eval_samples: 500
 
 success_criteria:
   watermark_retention_pct: 51

@@ -9,11 +9,31 @@ from backbone.model import LLaMABackbone
 from eval.watermark import run_peccavi
 from typing import Dict
 import json
+import math
 import os
 import logging
 import yaml
 
 logger = logging.getLogger(__name__)
+
+
+class _NumpyEncoder(json.JSONEncoder):
+    """JSON encoder that handles numpy scalars and NaN."""
+    def default(self, o):
+        try:
+            import numpy as np
+            if isinstance(o, np.bool_):
+                return bool(o)
+            if isinstance(o, np.integer):
+                return int(o)
+            if isinstance(o, np.floating):
+                f = float(o)
+                return None if math.isnan(f) else f
+        except ImportError:
+            pass
+        if isinstance(o, float) and math.isnan(o):
+            return None
+        return super().default(o)
 
 THETA_CHECKPOINT = "./results/theta_checkpoint.json"
 DETAILED_OUTPUT = "./results/detailed_results.json"
@@ -47,7 +67,12 @@ def _peccavi_summary(pec_out: Dict) -> Dict:
         "effective_score_final": pec_out["effective_score_final"],
         "improvement_pct": pec_out["effective_score_improvement_pct"],
         "auc_roc": pec_out["auc_roc"],
+        "tpr_at_1fpr": pec_out.get("tpr_at_1fpr"),
         "false_positive_rate": pec_out["false_positive_rate"],
+        "avg_ppl_baseline": pec_out.get("avg_ppl_baseline"),
+        "avg_ppl_watermarked": pec_out.get("avg_ppl_watermarked"),
+        "ppl_ratio": pec_out.get("ppl_ratio"),
+        "attack_survival": pec_out.get("attack_survival", {}),
         "avg_readability": pec_out["avg_readability"],
         "avg_gpt4_quality": pec_out.get("avg_gpt4_quality"),
         "pass_retention": pec_out["meets_85pct_retention"],
@@ -137,11 +162,11 @@ def run_benchmarks(
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w") as f:
-        json.dump(report, f, indent=2)
+        json.dump(report, f, indent=2, cls=_NumpyEncoder)
     print(f"\n  Summary saved → {output_path}")
 
     with open(DETAILED_OUTPUT, "w") as f:
-        json.dump(all_detailed, f, indent=2)
+        json.dump(all_detailed, f, indent=2, cls=_NumpyEncoder)
     print(f"  Detailed records saved → {DETAILED_OUTPUT}")
 
     return report
@@ -167,5 +192,16 @@ def _print_summary(report: Dict):
         print(f"  False Positive    : {results['false_positive_rate']:.4f}")
         print(f"  Avg Readability   : {results['avg_readability']:.2f}/5  "
               f"({'PASS' if results['pass_readability'] else 'FAIL'} ≥3.0)")
+        if results.get("tpr_at_1fpr") is not None:
+            print(f"  TPR @ 1% FPR      : {results['tpr_at_1fpr']:.4f}")
+        if results.get("ppl_ratio") is not None:
+            try:
+                print(f"  PPL Ratio (wm/bl) : {results['ppl_ratio']:.4f}  (1.0 = no quality cost)")
+            except (ValueError, TypeError):
+                pass
+        if results.get("attack_survival"):
+            surv = results["attack_survival"]
+            parts = "  |  ".join(f"{k}: {v:.2f}" for k, v in surv.items())
+            print(f"  Attack survival   : {parts}")
         if results.get("avg_gpt4_quality") is not None:
             print(f"  GPT-4 Quality     : {results['avg_gpt4_quality']:.2f}/5")

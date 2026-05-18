@@ -1,25 +1,24 @@
 # configs/ablation_no_watermark.yaml
 # Ablation: no watermark — measures AUC-ROC of random baseline.
-# Both "watermarked" and baseline texts are generated without watermarking.
 # Expected AUC-ROC ~0.50 (chance). Confirms detector is not cheating.
 
 model:
   backbone: "meta-llama/Llama-2-7b-chat-hf"
   backend: "transformers"
   api_key: null
-  load_in_4bit: true
-  device: "auto"
+  load_in_4bit: false
+  device: "cuda"
 
 watermarking:
   watermark_mode: "none"
-  secret_key: "AIISC-SECRET"
+  secret_key: "PECCAVI-SECRET"
 
 agents:
   scriba_n_variants: 10
 
 policy_learning:
-  generations: 5
-  n_eval_samples: 100
+  generations: 50
+  n_eval_samples: 500
 
 success_criteria:
   watermark_retention_pct: 51

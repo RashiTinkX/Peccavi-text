@@ -15,7 +15,7 @@ EXPERIMENTS = [
     {
         "name": "peccavi",
         "config": "configs/peccavi.yaml",
-        "mode": "eval",
+        "mode": "train",
         "output": "results/peccavi.json",
         "seed": 42,
     },
@@ -27,23 +27,30 @@ EXPERIMENTS = [
         "seed": 42,
     },
     {
+        "name": "sir_baseline",
+        "config": "configs/sir_baseline.yaml",
+        "mode": "sir",
+        "output": "results/sir_baseline.json",
+        "seed": 42,
+    },
+    {
         "name": "ablation_fixed_theta",
         "config": "configs/ablation_fixed_theta.yaml",
-        "mode": "eval",
+        "mode": "train",   # reads alpha/nu/watermark_mode from the ablation config
         "output": "results/ablation_fixed_theta.json",
         "seed": 42,
     },
     {
         "name": "ablation_no_quality",
         "config": "configs/ablation_no_quality.yaml",
-        "mode": "eval",
+        "mode": "train",
         "output": "results/ablation_no_quality.json",
         "seed": 42,
     },
     {
         "name": "ablation_no_watermark",
         "config": "configs/ablation_no_watermark.yaml",
-        "mode": "eval",
+        "mode": "train",
         "output": "results/ablation_no_watermark.json",
         "seed": 42,
     },
@@ -59,7 +66,7 @@ def run_experiment(exp: dict, seed: int = None):
         sys.executable, "main.py",
         "--mode", exp["mode"],
         "--output", exp["output"],
-        "--config-dir", os.path.dirname(exp["config"]),
+        "--config-file", exp["config"],
         "--seed", str(s),
     ]
     print(f"\n{'='*60}")
@@ -93,6 +100,19 @@ def main():
         print(f"\n{'='*60}")
         print("  Generating comparison table...")
         subprocess.run([sys.executable, "eval/compare.py"] + result_files)
+
+    # Generate Pareto curve data and figure (Option 3: unified framework)
+    print(f"\n{'='*60}")
+    print("  Running Pareto sweep (KGW/SIR delta sweep for Figure 1)...")
+    print("  Sweeps delta in [0.5, 1.0, 1.5, 2.0, 2.5, 3.0] — takes ~30–60 min.")
+    sweep_result = subprocess.run(
+        [sys.executable, "scripts/pareto_sweep.py"], check=False
+    )
+    if sweep_result.returncode == 0:
+        print("  Rendering Pareto curve figure...")
+        subprocess.run([sys.executable, "eval/plot_pareto.py"], check=False)
+    else:
+        print("  WARNING: Pareto sweep failed — run manually: python scripts/pareto_sweep.py")
 
 
 if __name__ == "__main__":

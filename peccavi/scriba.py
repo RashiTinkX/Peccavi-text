@@ -5,6 +5,7 @@ Generates N paraphrased variants via lexical, syntactic, and semantic attacks.
 """
 
 from __future__ import annotations
+import os
 from backbone.model import LLaMABackbone #replace with GPT-4 / Claude (for high-quality adversarial paraphrases
 from backbone.generate import generate_n_responses
 from typing import List
@@ -72,7 +73,7 @@ class Scriba:
             return text
 
     def lm_paraphrase(self, text: str, prompt_template: str) -> str:
-        prompt = prompt_template.format(text=text)
+        prompt = prompt_template.replace("{text}", text)
         output = self.backbone.generate(prompt, max_new_tokens=120)
         return output.get("text", "").strip() or text
 
@@ -86,6 +87,37 @@ class Scriba:
         output = self.paraphrase_model(prompt, max_length=256, num_return_sequences=1)
         return output[0].get("generated_text", "").strip()
 
+    def gpt4_paraphrase(self, text: str) -> str:
+        """Neural paraphrase via GPT-4o — strongest known attack on token-level watermarks.
+        Rewrites the entire token distribution from scratch, destroying green-list signal.
+        Falls back to lm_paraphrase if OPENAI_API_KEY is not set."""
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            return self.lm_paraphrase(text, random.choice(PARAPHRASE_PROMPTS))
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key)
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a paraphrasing assistant. Rewrite the given text using "
+                            "completely different words and sentence structures while preserving "
+                            "the exact meaning. Do not add or remove information."
+                        ),
+                    },
+                    {"role": "user", "content": f"Paraphrase this text:\n\n{text}"},
+                ],
+                max_tokens=300,
+                temperature=0.7,
+            )
+            result = response.choices[0].message.content.strip()
+            return result if result else text
+        except Exception:
+            return self.lm_paraphrase(text, random.choice(PARAPHRASE_PROMPTS))
+
     def paraphrase(self, text: str) -> List[str]:
         variants = []
         techniques = [
@@ -93,6 +125,7 @@ class Scriba:
             self.syntactic_attack,
             self.semantic_attack,
             lambda t: self.lm_paraphrase(t, random.choice(PARAPHRASE_PROMPTS)),
+            self.gpt4_paraphrase,
         ]
         for _ in range(self.n_variants):
             technique = random.choice(techniques)

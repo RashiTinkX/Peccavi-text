@@ -28,19 +28,20 @@ baseline_models:
     backend: "openai"
     api_key: null          # reads from OPENAI_API_KEY env var
 
-  #- name: "Claude-3"
-  #  backbone: "claude-sonnet-4-6"
-  #  backend: "anthropic"
-  #  api_key: null         # reads from ANTHROPIC_API_KEY env var
+  - name: "Claude-3"
+    backbone: "claude-sonnet-4-6"
+    backend: "anthropic"
+    api_key: null          # reads from ANTHROPIC_API_KEY env var
 
 watermarking:
   theta_init: 2.0
-  theta_min: 0.1
-  theta_max: 10.0
+  theta_min: 0.5
+  theta_max: 8.0
   tournament_k: 16
   secret_key: "PECCAVI-SECRET"
   detection_threshold: 0.52
   watermark_mode: "peccavi"
+  adaptive_theta: true        # content-adaptive policy: θ(prompt) = θ_base + w·features
 
 agents:
   scriba_n_variants: 10
@@ -51,8 +52,8 @@ policy_learning:
   gamma: 0.99
   lambda_wm: 0.6
   nu_quality: 0.4
-  generations: 20
-  n_eval_samples: 100
+  generations: 150
+  n_eval_samples: 500
 
 success_criteria:
   watermark_retention_pct: 51   # above-chance survival under back-translation
