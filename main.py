@@ -218,6 +218,7 @@ def _train_peccavi(backbone, args=None):
         watermark_mode=wm_cfg.get("watermark_mode", "peccavi"),
         lam=pl_cfg.get("lambda_wm", 0.6),
         nu=pl_cfg.get("nu_quality", 0.4),
+        mu_ppl=pl_cfg.get("mu_ppl", 0.0),
         alpha=pl_cfg.get("alpha", 0.05),
         seed=seed,
         checkpoint_path=THETA_CHECKPOINT,

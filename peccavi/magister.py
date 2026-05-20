@@ -50,10 +50,13 @@ def text_quality_score(text: str, backbone=None, reference_text: str = None) -> 
     
 def composite_reward(
     effective_wm_score: float, quality: float,
-    lam: float = 0.6, nu: float = 0.4
+    lam: float = 0.6, nu: float = 0.4,
+    mu_ppl: float = 0.0, ppl_ratio: float = 1.0,
 ) -> float:
-    """r = λ * S_eff + ν * Q"""
-    return lam * effective_wm_score + nu * quality
+    """r = λ * S_eff + ν * Q - μ * max(0, PPL_ratio - 1)
+    mu_ppl=0 (default) reproduces the original reward; set >0 to penalise quality cost."""
+    ppl_penalty = mu_ppl * max(0.0, ppl_ratio - 1.0)
+    return lam * effective_wm_score + nu * quality - ppl_penalty
 
 
 class Magister:
@@ -65,6 +68,7 @@ class Magister:
         gamma: float = 0.99,
         lam: float = 0.6,
         nu: float = 0.4,
+        mu_ppl: float = 0.0,
         secret_key: str = SECRET_KEY,
         adaptive: bool = False,
         theta_min: float = 0.5,
@@ -76,6 +80,7 @@ class Magister:
         self.gamma = gamma
         self.lam = lam
         self.nu = nu
+        self.mu_ppl = mu_ppl
         self.secret_key = secret_key
         self.history: List[float] = []
 
@@ -141,7 +146,21 @@ class Magister:
         the context-specific θ for the next prompt.
         """
         quality = text_quality_score(generated_text, self.backbone, reference_text)
-        reward = composite_reward(effective_wm_score, quality, self.lam, self.nu)
+        # Compute backbone PPL ratio for penalty term (1.0 = no cost; >1.0 penalised)
+        ppl_ratio = 1.0
+        if self.mu_ppl > 0.0 and self.backbone.backend == "transformers" and hasattr(self.backbone, "model"):
+            try:
+                import math
+                ref_enc = self.backbone.tokenizer(reference_text or generated_text, return_tensors="pt").to(self.backbone.model.device)
+                gen_enc = self.backbone.tokenizer(generated_text, return_tensors="pt").to(self.backbone.model.device)
+                import torch
+                with torch.no_grad():
+                    ppl_ref = math.exp(self.backbone.model(**ref_enc, labels=ref_enc["input_ids"]).loss.item())
+                    ppl_gen = math.exp(self.backbone.model(**gen_enc, labels=gen_enc["input_ids"]).loss.item())
+                ppl_ratio = ppl_gen / max(ppl_ref, 1e-6)
+            except Exception:
+                pass
+        reward = composite_reward(effective_wm_score, quality, self.lam, self.nu, self.mu_ppl, ppl_ratio)
 
         if hasattr(self.backbone, "tokenizer"):
             token_ids = self.backbone.tokenizer.encode(generated_text)

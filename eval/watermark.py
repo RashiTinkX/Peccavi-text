@@ -50,6 +50,7 @@ def run_peccavi(
     sir_entropy_threshold: float = 1.0,
     lam: float = 0.6,
     nu: float = 0.4,
+    mu_ppl: float = 0.0,
     alpha: float = 0.05,
     seed: int = 42,
     checkpoint_path: str = None,
@@ -79,7 +80,7 @@ def run_peccavi(
         generator = Auctor(backbone, theta=theta_init)
         magister = Magister(
             backbone, theta_init=theta_init, alpha=alpha, lam=lam, nu=nu,
-            adaptive=adaptive_theta, theta_min=theta_min, theta_max=theta_max,
+            mu_ppl=mu_ppl, adaptive=adaptive_theta, theta_min=theta_min, theta_max=theta_max,
         )
 
     featurizer = PromptFeaturizer() if (adaptive_theta and watermark_mode == "peccavi") else None
@@ -239,10 +240,14 @@ def run_peccavi(
     else:
         avg_ppl_baseline = avg_ppl_wm = ppl_ratio = float("nan")
 
-    # Per-attack watermark survival — reported separately for ablation analysis
+    # Per-attack survival at multiple detection thresholds — enables survival-vs-threshold curve.
+    # Saving raw z-scores lets us recompute at any threshold without re-running.
     logger.info("Computing per-attack survival rates...")
+    THRESHOLDS = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0]
     attack_names = ["lexical", "syntactic", "semantic", "lm_paraphrase", "gpt4_paraphrase"]
     attack_survival: Dict[str, float] = {}
+    attack_z_scores: Dict[str, List[float]] = {}
+    attack_survival_by_threshold: Dict[str, Dict[str, float]] = {}
     sample_attack = min(30, n_eval_samples)
     _attack_techniques = [
         scriba.lexical_attack,
@@ -258,8 +263,13 @@ def run_peccavi(
             z_val = (generator.z_score(attacked) if use_generator_z
                      else custos.z_score(attacked))
             z_list.append(z_val)
+        attack_z_scores[attack_name] = [round(z, 4) for z in z_list]
         survival = sum(1 for z in z_list if z >= z_threshold) / max(len(z_list), 1)
         attack_survival[attack_name] = round(survival, 4)
+        attack_survival_by_threshold[attack_name] = {
+            f"z{t:.1f}": round(sum(1 for z in z_list if z >= t) / max(len(z_list), 1), 4)
+            for t in THRESHOLDS
+        }
 
     logger.info("Building detailed eval records...")
     EVAL_DETAIL_LIMIT = 50
@@ -336,6 +346,8 @@ def run_peccavi(
         "avg_ppl_watermarked": avg_ppl_wm,
         "ppl_ratio": ppl_ratio,
         "attack_survival": attack_survival,
+        "attack_z_scores": attack_z_scores,
+        "attack_survival_by_threshold": attack_survival_by_threshold,
         "gpt4_survival": attack_survival.get("gpt4_paraphrase"),
         "adaptive_theta": adaptive_theta,
         "w_final": magister.w.tolist() if (magister and adaptive_theta) else None,
