@@ -295,13 +295,13 @@ def run_peccavi(
             },
         })
 
-    first_eff = history[0]["effective_score"]
-    last_eff = history[-1]["effective_score"]
-    improvement = (last_eff - first_eff) / max(first_eff, 1e-6) * 100
+    first_eff = history[0]["effective_score"] if history else 0.0
+    last_eff = history[-1]["effective_score"] if history else 0.0
+    improvement = (last_eff - first_eff) / max(first_eff, 1e-6) * 100 if history else 0.0
 
-    avg_readability = round(sum(r["readability"] for r in history) / len(history), 2)
-    avg_gpt4_quality = round(sum(r["gpt4_quality"] for r in history) / len(history), 2)
-    avg_retention = round(sum(r["retention_rate"] for r in history) / len(history), 4)
+    avg_readability = round(sum(r["readability"] for r in history) / len(history), 2) if history else 0.0
+    avg_gpt4_quality = round(sum(r["gpt4_quality"] for r in history) / len(history), 2) if history else 0.0
+    avg_retention = round(sum(r["retention_rate"] for r in history) / len(history), 4) if history else 0.0
 
     # Mean θ per prompt-entropy quartile — primary evidence for content-adaptive claim.
     # Spread = Q4_creative - Q1_factual; ≥ 1.0 confirms meaningful adaptation.
