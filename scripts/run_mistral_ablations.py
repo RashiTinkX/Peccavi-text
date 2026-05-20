@@ -84,8 +84,14 @@ def run_experiment(exp: dict, seed: int = None):
 def main():
     os.makedirs("results", exist_ok=True)
     multi_seed = os.getenv("MULTI_SEED", "0") == "1"
+    single_seed = os.getenv("SEED")  # SEED=123 python scripts/run_mistral_ablations.py
 
-    if multi_seed:
+    if single_seed is not None:
+        s = int(single_seed)
+        print(f"Running Mistral experiments with seed={s}...")
+        for exp in EXPERIMENTS:
+            run_experiment(exp, seed=s)
+    elif multi_seed:
         print("Running Mistral experiments with 3 seeds...")
         for exp in EXPERIMENTS:
             for seed in SEEDS:
