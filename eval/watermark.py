@@ -51,6 +51,7 @@ def run_peccavi(
     lam: float = 0.6,
     nu: float = 0.4,
     mu_ppl: float = 0.0,
+    rho_survival: float = 0.0,
     alpha: float = 0.05,
     seed: int = 42,
     checkpoint_path: str = None,
@@ -80,7 +81,8 @@ def run_peccavi(
         generator = Auctor(backbone, theta=theta_init)
         magister = Magister(
             backbone, theta_init=theta_init, alpha=alpha, lam=lam, nu=nu,
-            mu_ppl=mu_ppl, adaptive=adaptive_theta, theta_min=theta_min, theta_max=theta_max,
+            mu_ppl=mu_ppl, rho_survival=rho_survival,
+            adaptive=adaptive_theta, theta_min=theta_min, theta_max=theta_max,
         )
 
     featurizer = PromptFeaturizer() if (adaptive_theta and watermark_mode == "peccavi") else None

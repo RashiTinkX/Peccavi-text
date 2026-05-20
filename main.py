@@ -219,6 +219,7 @@ def _train_peccavi(backbone, args=None):
         lam=pl_cfg.get("lambda_wm", 0.6),
         nu=pl_cfg.get("nu_quality", 0.4),
         mu_ppl=pl_cfg.get("mu_ppl", 0.0),
+        rho_survival=pl_cfg.get("rho_survival", 0.0),
         alpha=pl_cfg.get("alpha", 0.05),
         seed=seed,
         checkpoint_path=THETA_CHECKPOINT,

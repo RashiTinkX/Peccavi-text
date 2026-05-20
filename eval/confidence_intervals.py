@@ -58,10 +58,20 @@ def _experiment_key(stem: str) -> str:
 
 
 def main():
-    paths = sys.argv[1:]
-    if not paths:
+    import glob as _glob
+    raw_paths = sys.argv[1:]
+    if not raw_paths:
         print("Usage: python eval/confidence_intervals.py <results.json> [...]")
         sys.exit(1)
+
+    # Expand glob patterns (needed on Windows where the shell doesn't expand them)
+    paths = []
+    for p in raw_paths:
+        expanded = _glob.glob(p)
+        if expanded:
+            paths.extend(expanded)
+        else:
+            paths.append(p)  # keep as-is; will fail with a clear error below
 
     groups: Dict[str, List[dict]] = defaultdict(list)
     for path in paths:
