@@ -301,13 +301,18 @@ def run_peccavi(
         _thts = np.array([d["theta_context"] for d in theta_by_prompt])
         q25, q50, q75 = np.percentile(_ents, [25, 50, 75])
         _q1 = _thts[_ents <= q25]
-        _q4 = _thts[_ents > q75]
+        _q4 = _thts[_ents >= q75]
+        _q2 = _thts[(_ents > q25) & (_ents < q50)]
+        _q3 = _thts[(_ents >= q50) & (_ents < q75)]
+        def _safe_mean(arr):
+            return round(float(np.mean(arr)), 4) if len(arr) > 0 else None
+        _spread = round(float(np.mean(_q4) - np.mean(_q1)), 4) if (len(_q1) > 0 and len(_q4) > 0) else None
         theta_by_quartile = {
-            "Q1_factual":  round(float(np.mean(_q1)), 4),
-            "Q2":          round(float(np.mean(_thts[(_ents > q25) & (_ents <= q50)])), 4),
-            "Q3":          round(float(np.mean(_thts[(_ents > q50) & (_ents <= q75)])), 4),
-            "Q4_creative": round(float(np.mean(_q4)), 4),
-            "spread":      round(float(np.mean(_q4) - np.mean(_q1)), 4),
+            "Q1_factual":  _safe_mean(_q1),
+            "Q2":          _safe_mean(_q2),
+            "Q3":          _safe_mean(_q3),
+            "Q4_creative": _safe_mean(_q4),
+            "spread":      _spread,
         }
         logger.info(
             f"θ-by-quartile | Q1={theta_by_quartile['Q1_factual']:.3f} "
