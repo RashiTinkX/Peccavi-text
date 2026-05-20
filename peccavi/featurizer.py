@@ -53,10 +53,10 @@ class PromptFeaturizer:
         counts = Counter(tokens)
         probs = np.array(list(counts.values()), dtype=np.float64) / n
 
-        # f0: normalised Shannon entropy
+        # f0: fixed-scale entropy — log2(50000) reference gives real spread across
+        # content types; per-prompt normalisation compressed everything to 0.95-1.0.
         raw_h = -float(np.sum(probs * np.log2(probs + 1e-12)))
-        max_h = math.log2(max(len(counts), 2))
-        f0 = float(min(raw_h / max_h, 1.0))
+        f0 = float(min(raw_h / math.log2(50000), 1.0))
 
         # f1: normalised length
         f1 = float(min(n / self.max_len, 1.0))
