@@ -92,42 +92,46 @@ def run_peccavi(
     theta_by_prompt: List[Dict] = []   # tracks (entropy, theta_context) for paper Figure 2
 
     for gen in range(1, generations + 1):
-        prompt = praeco.next_prompt()
+        try:
+            prompt = praeco.next_prompt()
 
-        if watermark_mode == "peccavi":
-            features = featurizer.extract(prompt) if featurizer else None
-            context_theta = magister.compute_theta(features)
-            generator.theta = context_theta
-            wm_text = generator.generate(prompt, max_tokens=100)
-        elif watermark_mode in ("kgw", "sir"):
-            wm_text = generator.generate(prompt, max_tokens=100)
-        else:
-            wm_text = backbone.generate(prompt, max_new_tokens=100)["text"]
+            if watermark_mode == "peccavi":
+                features = featurizer.extract(prompt) if featurizer else None
+                context_theta = magister.compute_theta(features)
+                generator.theta = context_theta
+                wm_text = generator.generate(prompt, max_tokens=100)
+            elif watermark_mode in ("kgw", "sir"):
+                wm_text = generator.generate(prompt, max_tokens=100)
+            else:
+                wm_text = backbone.generate(prompt, max_new_tokens=100)["text"]
 
-        if watermark_mode in ("kgw", "sir"):
-            original_score = (generator.z_score(wm_text) + 10) / 20  # normalise z to [0,1] approx
-        else:
-            original_score = custos.watermark_score(wm_text)
+            if watermark_mode in ("kgw", "sir"):
+                original_score = (generator.z_score(wm_text) + 10) / 20  # normalise z to [0,1] approx
+            else:
+                original_score = custos.watermark_score(wm_text)
 
-        paraphrases = scriba.paraphrase(wm_text)
-        s_eff = custos.effective_score(paraphrases)
-        z_eff = custos.effective_z_score(paraphrases)
+            paraphrases = scriba.paraphrase(wm_text)
+            s_eff = custos.effective_score(paraphrases)
+            z_eff = custos.effective_z_score(paraphrases)
 
-        z_threshold = 4.0
-        if watermark_mode in ("kgw", "sir"):
-            para_z = [generator.z_score(p) for p in paraphrases]
-        else:
-            para_z = [custos.z_score(p) for p in paraphrases]
-        retention = sum(1 for z in para_z if z >= z_threshold) / max(len(para_z), 1)
+            z_threshold = 4.0
+            if watermark_mode in ("kgw", "sir"):
+                para_z = [generator.z_score(p) for p in paraphrases]
+            else:
+                para_z = [custos.z_score(p) for p in paraphrases]
+            retention = sum(1 for z in para_z if z >= z_threshold) / max(len(para_z), 1)
 
-        q_score = quality_score(wm_text, prompt=prompt)
-        readability = flesch_quality_score(wm_text)
+            q_score = quality_score(wm_text, prompt=prompt)
+            readability = flesch_quality_score(wm_text)
 
-        _feats = features if watermark_mode == "peccavi" else None
-        new_theta = (
-            magister.update(wm_text, original_score, reference_text=prompt, prompt_features=_feats)
-            if magister else theta_init
-        )
+            _feats = features if watermark_mode == "peccavi" else None
+            new_theta = (
+                magister.update(wm_text, original_score, reference_text=prompt, prompt_features=_feats)
+                if magister else theta_init
+            )
+        except Exception as _gen_exc:
+            logger.warning(f"Gen {gen} failed and will be skipped: {_gen_exc}")
+            continue
 
         # Track (entropy, θ_context) for Figure 2: θ vs prompt entropy scatter plot
         if featurizer is not None and _feats is not None:
@@ -335,7 +339,7 @@ def run_peccavi(
     summary = {
         "watermark_mode": watermark_mode,
         "seed": seed,
-        "theta_final": history[-1]["theta"],
+        "theta_final": history[-1]["theta"] if history else theta_init,
         "effective_score_final": last_eff,
         "effective_score_improvement_pct": round(improvement, 2),
         "avg_retention_rate": avg_retention,
